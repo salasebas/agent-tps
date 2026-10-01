@@ -140,6 +140,59 @@ def render_benchmark_result(result: BenchmarkResult) -> None:
 
 def render_saved_run_detail(run: dict[str, Any]) -> None:
     """Renders a standalone card for an existing saved run dictionary."""
+    if run.get("type") == "stress":
+        status = run.get("status", "unknown").upper()
+        status_style = "green" if status == "SUCCESS" else "red"
+
+        title_text = Text()
+        title_text.append("🔥 Saved Concurrency Stress Report: ", style="bold cyan")
+        title_text.append(f"{run.get('provider', '').upper()} ", style="bold white")
+        title_text.append(f"({run.get('concurrency_level', 1)} Workers)", style="dim")
+
+        summary_table = Table.grid(padding=(0, 2))
+        summary_table.add_column("Key", style="dim")
+        summary_table.add_column("Value", style="bold")
+
+        summary_table.add_row("Run ID", run.get("id", "N/A"))
+        summary_table.add_row("Saved At", run.get("saved_at", "N/A"))
+        summary_table.add_row("Status", f"[{status_style}]{status}[/{status_style}]")
+        summary_table.add_row("Total Requests", str(run.get("total_requests", 0)))
+        summary_table.add_row("Successful", f"[green]{run.get('successful_requests', 0)}[/green]")
+        summary_table.add_row("Failed", f"[red]{run.get('failed_requests', 0)}[/red]")
+        summary_table.add_row("Timed Out", f"[yellow]{run.get('timed_out_requests', 0)}[/yellow]")
+        summary_table.add_row(
+            "Rate Limited (429)", f"[magenta]{run.get('rate_limited_requests', 0)}[/magenta]"
+        )
+        summary_table.add_row("Duration", f"{run.get('wall_clock_duration_s', 0.0):.2f} s")
+        summary_table.add_row(
+            "Aggregate Decode TPS",
+            f"[bold yellow]{run.get('aggregate_decode_tps', 0.0):.2f} tok/s[/bold yellow]",
+        )
+        summary_table.add_row("Mean Worker Decode TPS", f"{run.get('mean_worker_decode_tps', 0.0):.2f} tok/s")
+        if run.get("mean_ttft_ms") is not None:
+            summary_table.add_row("Mean TTFT", f"{run.get('mean_ttft_ms', 0.0):.1f} ms")
+        if run.get("p95_ttft_ms") is not None:
+            summary_table.add_row("p95 TTFT", f"{run.get('p95_ttft_ms', 0.0):.1f} ms")
+        if run.get("degradation_percent", 0) > 0:
+            summary_table.add_row("TPS Degradation", f"[red]{run.get('degradation_percent'):.1f}%[/red]")
+
+        main_grid = Table.grid(padding=(1, 2))
+        main_grid.add_column()
+        main_grid.add_row(summary_table)
+
+        sample_errors = run.get("sample_errors", [])
+        if sample_errors:
+            err_table = Table(title="⚠️ Error Diagnostics", show_header=True, header_style="bold red")
+            err_table.add_column("Diagnostics / Failure Details", style="red")
+            for err in sample_errors:
+                err_table.add_row(err[:140])
+            main_grid.add_row(err_table)
+
+        console.print()
+        console.print(Panel(main_grid, title=title_text, border_style=status_style, expand=False))
+        console.print()
+        return
+
     status = run.get("status", "unknown").upper()
     status_style = "green" if status == "SUCCESS" else "red"
 
@@ -229,7 +282,7 @@ def render_runs_table(runs: list[dict[str, Any]]) -> None:
     table.add_column("#", justify="right", style="dim", width=4)
     table.add_column("Saved At", style="cyan")
     table.add_column("Provider", style="bold white")
-    table.add_column("Model", style="blue")
+    table.add_column("Model / Task", style="blue")
     table.add_column("Status", justify="center")
     table.add_column("Decode TPS", justify="right", style="bold green")
     table.add_column("TTFT", justify="right", style="yellow")
@@ -238,16 +291,29 @@ def render_runs_table(runs: list[dict[str, Any]]) -> None:
     for idx, r in enumerate(runs, 1):
         status_val = r.get("status", "unknown").upper()
         status_style = "green" if status_val == "SUCCESS" else "red"
-        tps_val = r.get("tps", {}).get("decode_tps", 0.0)
-        ttft_val = r.get("timings", {}).get("ttft_ms")
+        is_stress = r.get("type") == "stress"
+
+        if is_stress:
+            prov_str = f"{r.get('provider')} [stress {r.get('concurrency_level', 1)}w]"
+            model_str = f"{r.get('total_requests', 0)} reqs"
+            status_display = f"[{status_style}]{status_val} ({r.get('successful_requests', 0)}/{r.get('total_requests', 0)})[/{status_style}]"
+            tps_val = r.get("aggregate_decode_tps", 0.0)
+            ttft_val = r.get("mean_ttft_ms")
+        else:
+            prov_str = r.get("provider", "N/A")
+            model_str = r.get("model", "default")[:24]
+            status_display = f"[{status_style}]{status_val}[/{status_style}]"
+            tps_val = r.get("tps", {}).get("decode_tps", 0.0)
+            ttft_val = r.get("timings", {}).get("ttft_ms")
+
         ttft_str = f"{ttft_val:.1f}ms" if ttft_val is not None else "N/A"
 
         table.add_row(
             str(idx),
             r.get("saved_at", "N/A"),
-            r.get("provider", "N/A"),
-            r.get("model", "default")[:24],
-            f"[{status_style}]{status_val}[/{status_style}]",
+            prov_str,
+            model_str,
+            status_display,
             f"{tps_val:.1f} tok/s",
             ttft_str,
             r.get("id", "N/A")[:16],
@@ -280,7 +346,37 @@ def render_concurrency_report(report: ConcurrencyReport) -> None:
     if report.degradation_percent > 0:
         table.add_row("TPS Degradation", f"[red]{report.degradation_percent:.1f}%[/red]")
 
-    console.print(Panel(table, border_style="cyan", expand=False))
+    main_grid = Table.grid(padding=(1, 2))
+    main_grid.add_column()
+    main_grid.add_row(table)
+
+    if report.failed_requests > 0 or report.timed_out_requests > 0 or report.rate_limited_requests > 0:
+        err_table = Table(title="⚠️ Failure Diagnostics", show_header=True, header_style="bold red")
+        err_table.add_column("Type", style="yellow", width=16)
+        err_table.add_column("Count", justify="right", style="bold", width=8)
+        err_table.add_column("Sample Reason", style="red")
+
+        error_counts: dict[tuple[str, str], int] = {}
+        for r in report.results:
+            if r.status != BenchmarkStatus.SUCCESS:
+                tt_val = r.timeout_type.value if r.timeout_type else "unknown"
+                msg_val = r.error_message or "Unknown failure"
+                key = (tt_val, msg_val)
+                error_counts[key] = error_counts.get(key, 0) + 1
+
+        for (tt, msg), count in error_counts.items():
+            err_table.add_row(tt.upper(), str(count), msg[:120])
+
+        main_grid.add_row(err_table)
+
+    border_color = (
+        "green"
+        if report.failed_requests == 0 and report.successful_requests > 0
+        else "yellow"
+        if report.successful_requests > 0
+        else "red"
+    )
+    console.print(Panel(main_grid, border_style=border_color, expand=False))
 
 
 def render_opencode_sessions(sessions: list[OpenCodeSessionDetail]) -> None:

@@ -66,6 +66,38 @@ def test_storage_clear_all(tmp_path: Path):
     assert len(storage.list_runs()) == 0
 
 
+def test_storage_save_concurrency_run(tmp_path: Path):
+    from agent_tps.core.calculator import compute_concurrency_report
+
+    storage = BenchmarkStorage(runs_dir=tmp_path)
+    res_fail = BenchmarkResult(
+        id="worker-1",
+        provider="antigravity",
+        model="default",
+        status=BenchmarkStatus.ERROR,
+        timeout_type=TimeoutType.PROCESS_CRASH,
+        error_message="Binary 'agy' not found in PATH.",
+        timings=TimingMetrics(request_start_ms=0),
+    )
+    report = compute_concurrency_report(
+        concurrency_level=4,
+        results=[res_fail, res_fail, res_fail, res_fail],
+        wall_clock_duration_s=0.05,
+    )
+
+    saved_path = storage.save_concurrency_run(report, target="antigravity")
+    assert saved_path.exists()
+
+    runs = storage.list_runs()
+    assert len(runs) == 1
+    assert runs[0]["type"] == "stress"
+    assert runs[0]["provider"] == "antigravity"
+    assert runs[0]["status"] == "FAILED"
+    assert runs[0]["failed_requests"] == 4
+    assert len(runs[0]["sample_errors"]) == 1
+    assert "not found in PATH" in runs[0]["sample_errors"][0]
+
+
 def test_providers_registry_t3code_drivers():
     # Only T3 Code coding agent drivers must be present
     expected_providers = {"opencode", "cursor", "grok", "antigravity", "codex", "claude"}

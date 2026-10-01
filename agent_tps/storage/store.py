@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 from agent_tps.config import get_runs_dir
-from agent_tps.core.models import BenchmarkResult
+from agent_tps.core.models import BenchmarkResult, ConcurrencyReport
 
 
 class BenchmarkStorage:
@@ -34,6 +34,7 @@ class BenchmarkStorage:
         # Keep pure numerical and diagnostic telemetry only
         payload: dict[str, Any] = {
             "id": result.id,
+            "type": "benchmark",
             "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "provider": result.provider,
             "model": result.model,
@@ -68,6 +69,63 @@ class BenchmarkStorage:
                 "total_throughput_tps": result.tps.total_throughput_tps,
             },
             "metadata": result.metadata,
+        }
+
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+        return target_path
+
+    def save_concurrency_run(
+        self,
+        report: ConcurrencyReport,
+        target: str,
+        model: str | None = None,
+    ) -> Path:
+        """Saves concurrency stress test performance metrics to disk."""
+        timestamp_slug = time.strftime("%Y%m%d_%H%M%S")
+        run_id = f"stress_{target}_{int(time.time() * 1000)}"
+        filename = f"{timestamp_slug}_stress_{target}_{run_id}.json"
+        target_path = self.runs_dir / filename
+
+        sample_errors: list[str] = []
+        for r in report.results:
+            if r.error_message and r.error_message not in sample_errors:
+                sample_errors.append(r.error_message)
+
+        status_str = "SUCCESS" if report.successful_requests > 0 else "FAILED"
+
+        payload: dict[str, Any] = {
+            "id": run_id,
+            "type": "stress",
+            "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "provider": target,
+            "model": model or "auto",
+            "status": status_str,
+            "concurrency_level": report.concurrency_level,
+            "total_requests": report.total_requests,
+            "successful_requests": report.successful_requests,
+            "failed_requests": report.failed_requests,
+            "timed_out_requests": report.timed_out_requests,
+            "rate_limited_requests": report.rate_limited_requests,
+            "wall_clock_duration_s": report.wall_clock_duration_s,
+            "aggregate_decode_tps": report.aggregate_decode_tps,
+            "aggregate_e2e_tps": report.aggregate_e2e_tps,
+            "mean_worker_decode_tps": report.mean_worker_decode_tps,
+            "mean_ttft_ms": report.mean_ttft_ms,
+            "p50_ttft_ms": report.p50_ttft_ms,
+            "p95_ttft_ms": report.p95_ttft_ms,
+            "p99_ttft_ms": report.p99_ttft_ms,
+            "degradation_percent": report.degradation_percent,
+            "sample_errors": sample_errors[:5],
+            "tps": {
+                "decode_tps": report.aggregate_decode_tps,
+                "e2e_tps": report.aggregate_e2e_tps,
+            },
+            "timings": {
+                "ttft_ms": report.mean_ttft_ms,
+                "total_duration_ms": round(report.wall_clock_duration_s * 1000.0, 1),
+            },
         }
 
         with open(target_path, "w", encoding="utf-8") as f:

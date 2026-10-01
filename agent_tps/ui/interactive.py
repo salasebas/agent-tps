@@ -3,7 +3,7 @@
 Inspired by modern developer CLIs (Grok, Claude, OpenCode):
 - Instant fuzzy model search across all coding agent drivers
 - Standalone single report viewer with dynamic selection
-- Subagent concurrency load testing
+- Subagent concurrency load testing with curated heavy benchmark presets
 - Privacy-first metric storage with automatic chat purging
 - Clear reports management
 """
@@ -34,6 +34,64 @@ from agent_tps.ui.reporter import (
 console = Console()
 storage = BenchmarkStorage()
 
+PRESET_PROMPTS: list[dict[str, str]] = [
+    {
+        "id": "lru",
+        "title": "Thread-safe LRU Cache with TTL (Heavy Logic)",
+        "prompt": (
+            "Write a production-ready, thread-safe LRU Cache in Python. Requirements:\n"
+            "1. TTL expiration per key with a background thread cleanup.\n"
+            "2. Thread-safety with RLock and atomic hit/miss metrics.\n"
+            "3. Comprehensive unit tests covering expiration, eviction order, and race conditions.\n"
+            "4. Full typing annotations and docstrings."
+        ),
+    },
+    {
+        "id": "rest_api",
+        "title": "Async REST API with JWT Auth & Rate Limiter (Heavy Architecture)",
+        "prompt": (
+            "Implement a production-grade asynchronous REST API microservice in Python using FastAPI.\n"
+            "1. JWT authentication middleware with token expiration and refresh.\n"
+            "2. Sliding-window rate limiter per client IP / API key.\n"
+            "3. Pydantic v2 validation models for User and Auth schemas.\n"
+            "4. CRUD routes for users with mock in-memory database and complete pytest fixtures."
+        ),
+    },
+    {
+        "id": "parser",
+        "title": "Markdown to AST & HTML Compiler from scratch (Deep Generation)",
+        "prompt": (
+            "Build a complete Markdown-to-HTML parser and AST compiler in Python without regex or external packages.\n"
+            "1. Lexer and recursive descent parser that produces an Abstract Syntax Tree (AST).\n"
+            "2. Support headers (# to ######), blockquotes, lists (ordered/unordered), fenced code blocks, and bold/italic.\n"
+            "3. Tree-walking HTML renderer with proper character escaping.\n"
+            "4. Test suite verifying AST node structure and rendered HTML output."
+        ),
+    },
+    {
+        "id": "grep",
+        "title": "Multi-threaded CLI Grep & File Search Engine (CLI & Threads)",
+        "prompt": (
+            "Develop a high-performance multi-threaded CLI grep tool in Python using argparse/click.\n"
+            "1. Worker thread pool scanning directories recursively with glob and .gitignore filtering.\n"
+            "2. Regex pattern search with case-sensitivity and invert match flags.\n"
+            "3. Binary file detection and colored match highlights with line numbers and column offsets.\n"
+            "4. Concurrency benchmark comparing thread pool sizes (1, 2, 4, 8 workers)."
+        ),
+    },
+    {
+        "id": "sql",
+        "title": "In-Memory SQL Query Evaluator & Aggregations (Parsing & Aggregations)",
+        "prompt": (
+            "Create an in-memory SQL query evaluator in Python from scratch.\n"
+            "1. Parse standard SQL queries: SELECT, FROM, WHERE, GROUP BY, ORDER BY, LIMIT.\n"
+            "2. Support boolean expressions (AND, OR, NOT, =, !=, >, <) in WHERE clauses.\n"
+            "3. Implement aggregate functions: COUNT(*), SUM(col), AVG(col), MIN(col), MAX(col).\n"
+            "4. Include test cases running complex queries against mock tabular datasets."
+        ),
+    },
+]
+
 
 def print_banner() -> None:
     """Prints the sleek Agent-TPS header."""
@@ -51,13 +109,42 @@ def print_banner() -> None:
     console.print(Panel(header_text, border_style="cyan", expand=False))
 
 
+def select_prompt_interactive(default_custom: str = "Explain concurrency vs parallelism in 2 lines.") -> str:
+    """Lets user select between 5 heavy realistic presets or write a custom prompt."""
+    choices = [Choice(p["id"], f"{idx}. {p['title']}") for idx, p in enumerate(PRESET_PROMPTS, 1)]
+    choices.append(Choice("custom", "✍️ Custom Prompt..."))
+
+    choice = inquirer.select(
+        message="Prompt:",
+        choices=choices,
+        default="lru",
+    ).execute()
+
+    if choice == "custom":
+        user_prompt = (
+            inquirer.text(
+                message="Enter Custom Prompt:",
+                default=default_custom,
+            )
+            .execute()
+            .strip()
+        )
+        return user_prompt if user_prompt else default_custom
+
+    for p in PRESET_PROMPTS:
+        if p["id"] == choice:
+            return p["prompt"]
+
+    return default_custom
+
+
 def select_model_interactive() -> tuple[str, str]:
     """Allows user to either search globally via fuzzy finder or select by provider."""
     mode = inquirer.select(
-        message="Select Model Selection Mode:",
+        message="Model Search Mode:",
         choices=[
             Choice("fuzzy", "🔍 Search All Models (Global Fuzzy Finder)"),
-            Choice("provider", "🏢 Filter by Agent Provider First"),
+            Choice("provider", "🏢 Filter by Provider First"),
         ],
         default="fuzzy",
     ).execute()
@@ -74,16 +161,16 @@ def select_model_interactive() -> tuple[str, str]:
         choices.append(Choice(value=("custom", "custom"), name="✍️ Custom Model Slug..."))
 
         selected = inquirer.fuzzy(
-            message="Type to search model across all agent engines:",
+            message="Search model across engines:",
             choices=choices,
         ).execute()
 
         if selected == ("custom", "custom"):
             prov = inquirer.select(
-                message="Select Target Provider:",
+                message="Target Provider:",
                 choices=list(PROVIDERS_CATALOG.keys()),
             ).execute()
-            custom_slug = inquirer.text(message="Enter Custom Model Slug:").execute().strip()
+            custom_slug = inquirer.text(message="Enter Model Slug:").execute().strip()
             return prov, custom_slug
         return selected
 
@@ -91,23 +178,21 @@ def select_model_interactive() -> tuple[str, str]:
         provider_choices = [
             Choice(
                 value=p_id,
-                name=f"{p_info.name} - {p_info.description} ({'Installed' if p_info.is_installed else 'Not in PATH'})",
+                name=f"{p_info.name} ({'Installed' if p_info.is_installed else 'Not in PATH'})",
             )
             for p_id, p_info in PROVIDERS_CATALOG.items()
         ]
         provider = inquirer.select(
-            message="Select Provider / Agent Engine:",
+            message="Provider:",
             choices=provider_choices,
         ).execute()
 
         p_info = PROVIDERS_CATALOG[provider]
-        model_choices = [
-            Choice(value=m.id, name=f"{m.name} [{m.id}] - {m.description}") for m in p_info.models
-        ]
+        model_choices = [Choice(value=m.id, name=f"{m.name} [{m.id}]") for m in p_info.models]
         model_choices.append(Choice(value="custom", name="✍️ Custom Model Slug..."))
 
         selected_model = inquirer.select(
-            message=f"Select {p_info.name} Model:",
+            message=f"{p_info.name} Model:",
             choices=model_choices,
         ).execute()
 
@@ -119,20 +204,9 @@ def select_model_interactive() -> tuple[str, str]:
 
 def interactive_benchmark() -> None:
     """Executes a single benchmark run interactively with live streaming."""
-    console.print("\n[bold cyan]─── 🚀 Interactive Benchmark ───[/bold cyan]")
+    console.print("\n[bold cyan]─── 🚀 Benchmark ───[/bold cyan]")
 
-    default_prompt = "Explain concurrency vs parallelism in 2 lines."
-    prompt = (
-        inquirer.text(
-            message="Enter Prompt (hit Enter for default):",
-            default=default_prompt,
-        )
-        .execute()
-        .strip()
-    )
-    if not prompt:
-        prompt = default_prompt
-
+    prompt = select_prompt_interactive(default_custom="Explain concurrency vs parallelism in 2 lines.")
     provider, model = select_model_interactive()
 
     console.print(f"\n[dim]Initializing {provider.upper()} ({model})...[/dim]")
@@ -174,17 +248,23 @@ def interactive_benchmark() -> None:
 
 def interactive_stress_test() -> None:
     """Runs a concurrent subagents stress benchmark."""
-    console.print("\n[bold cyan]─── 🔥 Subagent Concurrency Stress Test ───[/bold cyan]")
+    console.print("\n[bold cyan]─── 🔥 Stress Test ───[/bold cyan]")
 
-    provider_choices = [Choice(k, PROVIDERS_CATALOG[k].name) for k in PROVIDERS_CATALOG]
+    provider_choices = [
+        Choice(
+            k,
+            f"{PROVIDERS_CATALOG[k].name} ({'Installed' if PROVIDERS_CATALOG[k].is_installed else 'Not in PATH'})",
+        )
+        for k in PROVIDERS_CATALOG
+    ]
     target = inquirer.select(
-        message="Select Benchmark Target:",
+        message="Target:",
         choices=provider_choices,
         default="opencode",
     ).execute()
 
     concurrency_str = inquirer.select(
-        message="Number of Concurrent Workers / Subagents:",
+        message="Workers (Subagents):",
         choices=["2", "4", "8", "16"],
         default="4",
     ).execute()
@@ -192,7 +272,7 @@ def interactive_stress_test() -> None:
 
     total_str = (
         inquirer.text(
-            message="Total Number of Requests:",
+            message="Total Requests:",
             default=str(concurrency * 2),
         )
         .execute()
@@ -200,19 +280,12 @@ def interactive_stress_test() -> None:
     )
     total = int(total_str) if total_str.isdigit() else (concurrency * 2)
 
-    prompt = (
-        inquirer.text(
-            message="Stress Prompt:",
-            default="Output a quick 1-sentence Python tip.",
-        )
-        .execute()
-        .strip()
-    )
+    prompt = select_prompt_interactive(default_custom="Output a quick 1-sentence Python tip.")
 
     runner = get_runner_for_provider(target)
     orchestrator = ConcurrencyRunner(runner)
 
-    console.print(f"\n[cyan]Spawning {concurrency} concurrent workers (Total: {total} runs)...[/cyan]")
+    console.print(f"\n[cyan]Spawning {concurrency} workers (Total: {total} runs)...[/cyan]")
 
     with Progress(
         SpinnerColumn(),
@@ -239,6 +312,10 @@ def interactive_stress_test() -> None:
 
     render_concurrency_report(report)
 
+    # Save stress test report to disk
+    saved_path = storage.save_concurrency_run(report, target=target)
+    console.print(f"[green]✓ Stress test report saved to {saved_path.name}[/green]\n")
+
 
 def interactive_view_runs() -> None:
     """Dynamic standalone report inspector: pick a run to view it standalone."""
@@ -251,17 +328,29 @@ def interactive_view_runs() -> None:
     for r in runs:
         date_str = r.get("saved_at", "N/A")
         prov = r.get("provider", "N/A")
-        mod = r.get("model", "N/A")
-        tps = r.get("tps", {}).get("decode_tps", 0.0)
-        ttft = r.get("timings", {}).get("ttft_ms")
-        ttft_str = f"{ttft:.0f}ms" if ttft is not None else "N/A"
-        label = f"{date_str} │ {prov:<10} │ {mod:<20} │ {tps:>5.1f} tok/s │ TTFT {ttft_str}"
+        is_stress = r.get("type") == "stress"
+        status_val = r.get("status", "N/A")
+
+        if is_stress:
+            c_w = r.get("concurrency_level", 1)
+            n_reqs = r.get("total_requests", 0)
+            tps = r.get("aggregate_decode_tps", 0.0)
+            label = (
+                f"{date_str} │ {prov:<10} │ [STRESS {c_w}w] {n_reqs} reqs ({status_val}) │ {tps:>5.1f} tok/s"
+            )
+        else:
+            mod = r.get("model", "N/A")
+            tps = r.get("tps", {}).get("decode_tps", 0.0)
+            ttft = r.get("timings", {}).get("ttft_ms")
+            ttft_str = f"{ttft:.0f}ms" if ttft is not None else "N/A"
+            label = f"{date_str} │ {prov:<10} │ {mod:<20} │ {tps:>5.1f} tok/s │ TTFT {ttft_str}"
+
         choices.append(Choice(value=r.get("id"), name=label))
 
-    choices.append(Choice(value="back", name="⬅️ Back to Main Menu"))
+    choices.append(Choice(value="back", name="⬅️ Back"))
 
     selected_id = inquirer.select(
-        message="Select a Report to View Standalone:",
+        message="Select Report:",
         choices=choices,
     ).execute()
 
@@ -289,7 +378,7 @@ def interactive_view_runs() -> None:
 def interactive_clear_reports() -> None:
     """Allows deleting a single report or clearing all saved reports."""
     action = inquirer.select(
-        message="Clear Reports Menu:",
+        message="Action:",
         choices=[
             Choice("all", "🗑️ Delete ALL Saved Reports"),
             Choice("cancel", "⬅️ Cancel"),
@@ -325,13 +414,13 @@ def run_interactive_tui() -> None:
     while True:
         print_banner()
         choice = inquirer.select(
-            message="What would you like to do?",
+            message="Action:",
             choices=[
-                Choice("bench", "⚡ Run Benchmark (Prompt, Model Fuzzy Finder, Live Speedometer)"),
-                Choice("stress", "🔥 Subagent Stress Test (Concurrency & Rate Limits)"),
-                Choice("runs", "📜 Saved Reports (Dynamic Standalone Inspector)"),
-                Choice("clear", "🗑️ Clear / Delete Reports"),
-                Choice("opencode_db", "📂 OpenCode Local History (SQLite Telemetry)"),
+                Choice("bench", "⚡ Benchmark"),
+                Choice("stress", "🔥 Stress Test"),
+                Choice("runs", "📜 Saved Reports"),
+                Choice("clear", "🗑️ Clear Reports"),
+                Choice("opencode_db", "📂 OpenCode DB"),
                 Choice("exit", "🚪 Exit"),
             ],
             default="bench",

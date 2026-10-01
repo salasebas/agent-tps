@@ -147,6 +147,7 @@ def stress_command(
         )
         for r in reports:
             render_concurrency_report(r)
+            storage.save_concurrency_run(r, target=target, model=model)
         if output_json:
             export_report_to_json([r.model_dump() for r in reports], output_json)
     else:
@@ -178,6 +179,8 @@ def stress_command(
             )
 
         render_concurrency_report(report)
+        saved_path = storage.save_concurrency_run(report, target=target, model=model)
+        console.print(f"[green]✓ Stress test report saved to {saved_path.name}[/green]")
         if output_json:
             export_report_to_json(report, output_json)
 
