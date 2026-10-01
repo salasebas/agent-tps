@@ -26,9 +26,16 @@ class CursorRunner(BaseAgentRunner):
         self._temp_dirs: list[str] = []
 
     def _detect_binary(self) -> str:
-        for candidate in ("cursor-agent", "cursor"):
-            if shutil.which(candidate):
-                return candidate
+        candidates = [
+            "cursor-agent",
+            "cursor",
+            str(os.path.expanduser("~/.local/bin/cursor-agent")),
+            "/usr/local/bin/cursor",
+            "/opt/homebrew/bin/cursor",
+        ]
+        for c in candidates:
+            if shutil.which(c) or (os.path.isfile(c) and os.access(c, os.X_OK)):
+                return c
         return "cursor"
 
     async def cleanup_session(self, session_id: str | None = None) -> None:
@@ -62,7 +69,7 @@ class CursorRunner(BaseAgentRunner):
         temp_dir = tempfile.mkdtemp(prefix="agent_tps_cursor_")
         self._temp_dirs.append(temp_dir)
 
-        cmd = [self.binary_path]
+        cmd = [self.binary_path, "-p"]
         if model:
             cmd.extend(["--model", model])
         cmd.append(prompt)

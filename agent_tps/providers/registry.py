@@ -34,7 +34,22 @@ class ProviderInfo(BaseModel):
 
     @property
     def is_installed(self) -> bool:
-        return bool(shutil.which(self.binary))
+        if shutil.which(self.binary):
+            return True
+        import os
+        from pathlib import Path
+
+        home = Path.home()
+        candidates = [
+            home / ".local" / "bin" / self.binary,
+            home / ".opencode" / "bin" / self.binary,
+            home / ".grok" / "bin" / self.binary,
+            home / ".antigravity" / "antigravity" / "bin" / self.binary,
+            home / "Library" / "pnpm" / "bin" / self.binary,
+            Path("/usr/local/bin") / self.binary,
+            Path("/opt/homebrew/bin") / self.binary,
+        ]
+        return any(c.is_file() and os.access(c, os.X_OK) for c in candidates)
 
 
 PROVIDERS_CATALOG: dict[str, ProviderInfo] = {

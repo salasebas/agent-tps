@@ -21,13 +21,11 @@ from rich.text import Text
 
 from agent_tps.core.concurrency import ConcurrencyRunner
 from agent_tps.providers.dispatcher import get_runner_for_provider
-from agent_tps.providers.opencode import OpenCodeDBReader
 from agent_tps.providers.registry import PROVIDERS_CATALOG, get_all_models_flat
 from agent_tps.storage.store import BenchmarkStorage
 from agent_tps.ui.reporter import (
     render_benchmark_result,
     render_concurrency_report,
-    render_opencode_sessions,
     render_saved_run_detail,
 )
 
@@ -112,7 +110,7 @@ def print_banner() -> None:
 def select_prompt_interactive(default_custom: str = "Explain concurrency vs parallelism in 2 lines.") -> str:
     """Lets user select between 5 heavy realistic presets or write a custom prompt."""
     choices = [Choice(p["id"], f"{idx}. {p['title']}") for idx, p in enumerate(PRESET_PROMPTS, 1)]
-    choices.append(Choice("custom", "✍️ Custom Prompt..."))
+    choices.append(Choice("custom", "✍️  Custom Prompt..."))
 
     choice = inquirer.select(
         message="Prompt:",
@@ -143,8 +141,8 @@ def select_model_interactive() -> tuple[str, str]:
     mode = inquirer.select(
         message="Model Search Mode:",
         choices=[
-            Choice("fuzzy", "🔍 Search All Models (Global Fuzzy Finder)"),
-            Choice("provider", "🏢 Filter by Provider First"),
+            Choice("fuzzy", "🔍  Search All Models (Fuzzy Finder)"),
+            Choice("provider", "🏢  Filter by Provider First"),
         ],
         default="fuzzy",
     ).execute()
@@ -335,19 +333,21 @@ def interactive_view_runs() -> None:
             c_w = r.get("concurrency_level", 1)
             n_reqs = r.get("total_requests", 0)
             tps = r.get("aggregate_decode_tps", 0.0)
-            label = (
-                f"{date_str} │ {prov:<10} │ [STRESS {c_w}w] {n_reqs} reqs ({status_val}) │ {tps:>5.1f} tok/s"
-            )
+            status_tag = f"[{status_val}]"
+            label = f"{date_str}   {prov:<11}   {status_tag:<9}   {c_w}w/{n_reqs} reqs   {tps:>5.1f} tok/s"
         else:
             mod = r.get("model", "N/A")
             tps = r.get("tps", {}).get("decode_tps", 0.0)
             ttft = r.get("timings", {}).get("ttft_ms")
-            ttft_str = f"{ttft:.0f}ms" if ttft is not None else "N/A"
-            label = f"{date_str} │ {prov:<10} │ {mod:<20} │ {tps:>5.1f} tok/s │ TTFT {ttft_str}"
+            ttft_str = f"{ttft:.0f}ms" if ttft is not None else "-"
+            status_tag = f"[{status_val}]"
+            label = (
+                f"{date_str}   {prov:<11}   {status_tag:<9}   {mod:<18}   {tps:>5.1f} tok/s   TTFT {ttft_str}"
+            )
 
         choices.append(Choice(value=r.get("id"), name=label))
 
-    choices.append(Choice(value="back", name="⬅️ Back"))
+    choices.append(Choice(value="back", name="🔙  Back to Main Menu"))
 
     selected_id = inquirer.select(
         message="Select Report:",
@@ -362,10 +362,10 @@ def interactive_view_runs() -> None:
         render_saved_run_detail(run_data)
 
         action = inquirer.select(
-            message=f"Action for report {selected_id[:16]}:",
+            message=f"Report {selected_id[:16]}:",
             choices=[
-                Choice("keep", "⬅️ Keep and return"),
-                Choice("delete", "🗑️ Delete this report"),
+                Choice("keep", "🔙  Back to List"),
+                Choice("delete", "🗑️   Delete This Report"),
             ],
             default="keep",
         ).execute()
@@ -378,10 +378,10 @@ def interactive_view_runs() -> None:
 def interactive_clear_reports() -> None:
     """Allows deleting a single report or clearing all saved reports."""
     action = inquirer.select(
-        message="Action:",
+        message="Clear Reports:",
         choices=[
-            Choice("all", "🗑️ Delete ALL Saved Reports"),
-            Choice("cancel", "⬅️ Cancel"),
+            Choice("all", "🗑️   Delete ALL Saved Reports"),
+            Choice("cancel", "🔙  Cancel"),
         ],
         default="cancel",
     ).execute()
@@ -396,19 +396,6 @@ def interactive_clear_reports() -> None:
             console.print(f"[green]Deleted {count} benchmark reports.[/green]\n")
 
 
-def interactive_opencode_history() -> None:
-    """Inspects past OpenCode sessions from local SQLite."""
-    reader = OpenCodeDBReader()
-    if not reader.is_available():
-        console.print(
-            "[yellow]OpenCode database not found at default location (~/.local/share/opencode/opencode.db).[/yellow]\n"
-        )
-        return
-
-    sessions = reader.get_recent_sessions(limit=15)
-    render_opencode_sessions(sessions)
-
-
 def run_interactive_tui() -> None:
     """Main loop for the Agent-TPS interactive terminal interface."""
     while True:
@@ -416,12 +403,11 @@ def run_interactive_tui() -> None:
         choice = inquirer.select(
             message="Action:",
             choices=[
-                Choice("bench", "⚡ Benchmark"),
-                Choice("stress", "🔥 Stress Test"),
-                Choice("runs", "📜 Saved Reports"),
-                Choice("clear", "🗑️ Clear Reports"),
-                Choice("opencode_db", "📂 OpenCode DB"),
-                Choice("exit", "🚪 Exit"),
+                Choice("bench", "⚡  Benchmark"),
+                Choice("stress", "🔥  Stress Test"),
+                Choice("runs", "📜  Saved Reports"),
+                Choice("clear", "🗑️   Clear Reports"),
+                Choice("exit", "🚪  Exit"),
             ],
             default="bench",
         ).execute()
@@ -434,8 +420,6 @@ def run_interactive_tui() -> None:
             interactive_view_runs()
         elif choice == "clear":
             interactive_clear_reports()
-        elif choice == "opencode_db":
-            interactive_opencode_history()
         elif choice == "exit":
-            console.print("[dim]Goodbye![/dim]")
+            console.print("[dim]Goodbye![/dim]\n")
             break

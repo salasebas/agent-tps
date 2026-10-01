@@ -26,9 +26,17 @@ class GrokRunner(BaseAgentRunner):
         self._temp_dirs: list[str] = []
 
     def _detect_binary(self) -> str:
-        for candidate in ("grok-build", "grok"):
-            if shutil.which(candidate):
-                return candidate
+        candidates = [
+            "grok-build",
+            "grok",
+            str(os.path.expanduser("~/.grok/bin/grok")),
+            str(os.path.expanduser("~/.local/bin/grok")),
+            "/usr/local/bin/grok",
+            "/opt/homebrew/bin/grok",
+        ]
+        for c in candidates:
+            if shutil.which(c) or (os.path.isfile(c) and os.access(c, os.X_OK)):
+                return c
         return "grok"
 
     async def cleanup_session(self, session_id: str | None = None) -> None:
@@ -48,7 +56,10 @@ class GrokRunner(BaseAgentRunner):
         req_id = f"grok_{int(time.time() * 1000)}"
         request_start_ms = time.time() * 1000.0
 
-        if not shutil.which(self.binary_path):
+        resolved_bin = shutil.which(self.binary_path) or (
+            self.binary_path if os.path.isfile(self.binary_path) else None
+        )
+        if not resolved_bin:
             return BenchmarkResult(
                 id=req_id,
                 provider="grok",
@@ -62,7 +73,9 @@ class GrokRunner(BaseAgentRunner):
         temp_dir = tempfile.mkdtemp(prefix="agent_tps_grok_")
         self._temp_dirs.append(temp_dir)
 
-        cmd = [self.binary_path, prompt]
+        cmd = [resolved_bin, "-p", prompt, "--output-format", "plain"]
+        if model:
+            cmd.extend(["-m", model])
 
         t0 = time.perf_counter()
         tokens_captured = TokenMetrics()
