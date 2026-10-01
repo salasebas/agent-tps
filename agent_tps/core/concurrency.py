@@ -5,8 +5,8 @@ from collections.abc import Callable
 import time
 from typing import Any
 
-from tokpulse.core.calculator import aggregate_concurrency_results
-from tokpulse.core.models import BenchmarkResult, ConcurrencyReport
+from agent_tps.core.calculator import aggregate_concurrency_results
+from agent_tps.core.models import BenchmarkResult, ConcurrencyReport
 
 
 class ConcurrencyRunner:
@@ -52,7 +52,7 @@ class ConcurrencyRunner:
                             **runner_kwargs,
                         )
                 except Exception as exc:
-                    from tokpulse.core.models import BenchmarkStatus, TimeoutType, TimingMetrics
+                    from agent_tps.core.models import BenchmarkStatus, TimeoutType, TimingMetrics
 
                     res = BenchmarkResult(
                         id=f"err_{idx}_{int(time.time() * 1000)}",

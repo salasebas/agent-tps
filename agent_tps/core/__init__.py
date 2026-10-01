@@ -1,6 +1,6 @@
-"""Core domain models and schemas for TokPulse."""
+"""Core domain models and schemas for agent-tps."""
 
-from tokpulse.core.models import (
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     ConcurrencyReport,

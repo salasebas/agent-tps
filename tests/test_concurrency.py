@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from tokpulse.core.concurrency import ConcurrencyRunner
-from tokpulse.core.models import (
+from agent_tps.core.concurrency import ConcurrencyRunner
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,

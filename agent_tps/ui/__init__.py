@@ -1,7 +1,7 @@
-"""UI module for TokPulse."""
+"""UI module for Agent-TPS."""
 
-from tokpulse.ui.interactive import run_interactive_tui
-from tokpulse.ui.reporter import (
+from agent_tps.ui.interactive import run_interactive_tui
+from agent_tps.ui.reporter import (
     render_benchmark_result,
     render_concurrency_report,
     render_opencode_sessions,

@@ -1,4 +1,4 @@
-# Lefthook configuration for TokPulse (fast Git hooks)
+# Lefthook configuration for Agent-TPS (fast Git hooks)
 # Runs Ruff (linter/formatter) and Pytest on pre-commit
 
 pre-commit:

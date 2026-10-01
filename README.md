@@ -1,10 +1,10 @@
 <div align="center">
 
-# ⚡ TokPulse
+# ⚡ Agent-TPS
 
-**High-Velocity Benchmark & Concurrency Profiler for AI Coding Agents**
+**Command-line TPS, latency, and concurrency profiler for AI coding agents**
 
-[![CI](https://github.com/salasebas/tokpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/salasebas/tokpulse/actions/workflows/ci.yml)
+[![CI](https://github.com/salasebas/agent-tps/actions/workflows/ci.yml/badge.svg)](https://github.com/salasebas/agent-tps/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.13-blue.svg)](https://www.python.org/)
 [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -15,7 +15,7 @@
 
 </div>
 
-## 💡 Why TokPulse?
+## 💡 Why Agent-TPS?
 
 Standard LLM benchmark tools measure simple HTTP API completions. But modern developers work with **autonomous coding agents** that run in background terminal processes, execute multi-turn loops, inspect repository workspaces, and query local SQLite caches.
 
@@ -25,40 +25,40 @@ When evaluating coding agents, you need answers to critical questions:
 - **How well does prompt caching perform?** (Prompt cache read vs write accounting).
 - **Does throughput collapse under multi-agent concurrency?** (Subagents competing for local processes, locks, or hitting HTTP 429 rate limits).
 
-**TokPulse** provides a unified speedometer, interactive terminal explorer, and multi-agent load tester designed specifically for developer coding agents.
+**Agent-TPS** provides a unified speedometer, interactive terminal explorer, and multi-agent load tester designed specifically for developer coding agents.
 
 ---
 
 ## 🚀 Quickstart
 
-Run TokPulse directly using [`uv`](https://github.com/astral-sh/uv):
+Run Agent-TPS directly using [`uv`](https://github.com/astral-sh/uv):
 
 ```bash
-# Launch the sleek interactive TUI
-uvx tokpulse
+# Launch the interactive terminal UI
+uvx agent-tps
 
 # Or run with the short alias
-uvx tp
+uvx atps
 ```
 
 Alternatively, clone the repository for local development:
 
 ```bash
-git clone https://github.com/salasebas/tokpulse.git
-cd tokpulse
+git clone https://github.com/salasebas/agent-tps.git
+cd agent-tps
 uv sync --extra dev
-uv run tokpulse
+uv run agent-tps
 ```
 
 ---
 
 ## 🕹️ Interactive Terminal Interface (TUI)
 
-Simply type `tokpulse` (or `tp`) with no arguments to open the clean interactive menu:
+Simply type `agent-tps` (or `atps`) with no arguments to open the clean interactive menu:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  ⚡ TokPulse v0.2.0                                             │
+│  ⚡ Agent-TPS v0.2.0                                            │
 │  Coding Agent Velocity & Concurrency Profiler                  │
 │  Engines: OpenCode · Cursor · Grok · Antigravity · Codex · Claude │
 └────────────────────────────────────────────────────────────────┘
@@ -73,7 +73,7 @@ Simply type `tokpulse` (or `tp`) with no arguments to open the clean interactive
 ```
 
 ### Key Interactive Features:
-1. **Global Fuzzy Model Finder**: Search across all 30+ agent models instantly (e.g. type `fable`, `gpt-6`, `gemini-2.5`, `longcat`, `composer`) without having to pick a provider first.
+1. **Global Fuzzy Model Finder**: Search across all agent models instantly (e.g. type `fable`, `gpt-6`, `gemini-2.5`, `longcat`, `composer`) without having to pick a provider first.
 2. **Live Token Speedometer**: Live streaming token preview with real-time token counter.
 3. **Dynamic Standalone Report Inspector**: Browse your saved benchmark runs and view full standalone performance telemetry cards on screen.
 4. **Subagents Concurrency Tester**: Spin up parallel worker pools to test degradation under load and detect rate limits (HTTP 429).
@@ -82,7 +82,7 @@ Simply type `tokpulse` (or `tp`) with no arguments to open the clean interactive
 
 ## 🛡️ Supported Agent Engines
 
-TokPulse natively integrates with the core agent CLI drivers:
+Agent-TPS natively integrates with the core agent CLI drivers:
 
 | Agent Engine | Driver Binary | Default Model | Typical Execution Profile |
 | :--- | :--- | :--- | :--- |
@@ -97,54 +97,54 @@ TokPulse natively integrates with the core agent CLI drivers:
 
 ## 🔒 Privacy Guarantee: Zero Chat Logging
 
-TokPulse is built strictly for **performance benchmarking**, not surveillance:
+Agent-TPS is built strictly for **performance benchmarking**, not surveillance:
 - **No Chat History Stored**: Prompts and generated text are never written to disk in persistent benchmark reports.
 - **Pure Numerical Telemetry**: Only performance metrics (tokens, TTFT, TPS, latencies, error types, timestamps) are saved.
 - **Automatic Session Purge**: After every benchmark execution, temporary sessions and state files are immediately wiped from the agent host (including OpenCode SQLite and temporary scratch workspaces).
 
 Metrics are stored locally on your machine in standard OS data paths:
-- **macOS**: `~/Library/Application Support/tokpulse/runs/`
-- **Linux**: `~/.local/share/tokpulse/runs/` (or `$XDG_DATA_HOME/tokpulse/runs/`)
-- **Windows**: `%APPDATA%/tokpulse/runs/`
+- **macOS**: `~/Library/Application Support/agent-tps/runs/`
+- **Linux**: `~/.local/share/agent-tps/runs/` (or `$XDG_DATA_HOME/agent-tps/runs/`)
+- **Windows**: `%APPDATA%/agent-tps/runs/`
 
 ---
 
 ## 💻 CLI Usage & Commands
 
-You can also use TokPulse headlessly or integrate it into CI pipelines:
+You can also use Agent-TPS headlessly or integrate it into CI pipelines:
 
 ```bash
 # Benchmark an agent with custom prompt
-uv run tokpulse bench --provider opencode --prompt "Write a Python binary search"
+uv run agent-tps bench --provider opencode --prompt "Write a Python binary search"
 
 # Benchmark with strict timeout guards
-uv run tokpulse bench --provider claude --ttft-timeout 5.0 --stall-timeout 3.0
+uv run agent-tps bench --provider claude --ttft-timeout 5.0 --stall-timeout 3.0
 
 # Concurrency stress test: 4 parallel workers, 8 total requests
-uv run tokpulse stress --target opencode --concurrency 4 --total 8
+uv run agent-tps stress --target opencode --concurrency 4 --total 8
 
 # Progressive scalability sweep (1, 2, 4, 8 workers)
-uv run tokpulse stress --target codex --sweep --total 16
+uv run agent-tps stress --target codex --sweep --total 16
 
 # View all saved runs in a summary table
-uv run tokpulse runs
+uv run agent-tps runs
 
 # Inspect a single report standalone on screen
-uv run tokpulse view <RUN_ID>
+uv run agent-tps view <RUN_ID>
 
 # Delete a single report or clear all reports
-uv run tokpulse delete <RUN_ID>
-uv run tokpulse clear --yes
+uv run agent-tps delete <RUN_ID>
+uv run agent-tps clear --yes
 
 # Inspect past sessions from your local OpenCode SQLite database
-uv run tokpulse opencode-history --limit 10
+uv run agent-tps opencode-history --limit 10
 ```
 
 ---
 
 ## 📐 Mathematical Methodology
 
-TokPulse computes high-resolution metrics following standardized profiling equations:
+Agent-TPS computes high-resolution metrics following standardized profiling equations:
 
 $$\text{Decode TPS} = \frac{N_{\text{output}} + N_{\text{reasoning}}}{T_{\text{completed}} - T_{\text{first\_token}}} \times 1000$$
 
@@ -162,7 +162,7 @@ $$J = \frac{1}{M-1} \sum_{i=1}^{M-1} |D(i) - D(i-1)|$$
 
 ## 🛠️ Development & Quality Controls
 
-TokPulse enforces strict code quality and formatting powered by **Ruff** (the blazingly fast modern linter/formatter) and **Lefthook**:
+Agent-TPS enforces strict code quality and formatting powered by **Ruff** (the blazingly fast modern linter/formatter) and **Lefthook**:
 
 ```bash
 # Run test suite

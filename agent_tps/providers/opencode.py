@@ -11,8 +11,8 @@ import sqlite3
 import time
 from typing import Any
 
-from tokpulse.core.calculator import compute_timing_metrics, compute_tps_metrics
-from tokpulse.core.models import (
+from agent_tps.core.calculator import compute_timing_metrics, compute_tps_metrics
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
@@ -20,7 +20,7 @@ from tokpulse.core.models import (
     TokenMetrics,
     TPSMetrics,
 )
-from tokpulse.providers.base import BaseAgentRunner
+from agent_tps.providers.base import BaseAgentRunner
 
 
 class OpenCodeSessionDetail:

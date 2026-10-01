@@ -1,4 +1,4 @@
-"""Rich terminal reporting components and cards for TokPulse."""
+"""Rich terminal reporting components and cards for Agent-TPS."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from tokpulse.core.models import BenchmarkResult, BenchmarkStatus, ConcurrencyReport, TimeoutType
-from tokpulse.providers.opencode import OpenCodeSessionDetail
+from agent_tps.core.models import BenchmarkResult, BenchmarkStatus, ConcurrencyReport, TimeoutType
+from agent_tps.providers.opencode import OpenCodeSessionDetail
 
 console = Console()
 
@@ -28,7 +28,7 @@ def render_benchmark_result(result: BenchmarkResult) -> None:
     }.get(result.status, "bold white")
 
     title_text = Text()
-    title_text.append("⚡ TokPulse Result: ", style="bold cyan")
+    title_text.append("⚡ Agent-TPS Result: ", style="bold cyan")
     title_text.append(f"{result.provider.upper()} ", style="bold white")
     title_text.append(f"({result.model})", style="dim")
 

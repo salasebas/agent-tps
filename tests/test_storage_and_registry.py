@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tokpulse.core.models import (
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
@@ -8,8 +8,8 @@ from tokpulse.core.models import (
     TokenMetrics,
     TPSMetrics,
 )
-from tokpulse.providers.registry import PROVIDERS_CATALOG, get_all_models_flat
-from tokpulse.storage.store import BenchmarkStorage
+from agent_tps.providers.registry import PROVIDERS_CATALOG, get_all_models_flat
+from agent_tps.storage.store import BenchmarkStorage
 
 
 def test_storage_save_list_and_privacy(tmp_path: Path):

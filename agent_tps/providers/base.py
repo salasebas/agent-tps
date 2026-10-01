@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from tokpulse.core.models import BenchmarkResult
+from agent_tps.core.models import BenchmarkResult
 
 
 class BaseAgentRunner(ABC):

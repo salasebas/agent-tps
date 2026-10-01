@@ -7,14 +7,14 @@ import shutil
 import tempfile
 import time
 
-from tokpulse.core.calculator import compute_timing_metrics, compute_tps_metrics
-from tokpulse.core.models import (
+from agent_tps.core.calculator import compute_timing_metrics, compute_tps_metrics
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
     TokenMetrics,
 )
-from tokpulse.providers.base import BaseAgentRunner
+from agent_tps.providers.base import BaseAgentRunner
 
 
 class CodexRunner(BaseAgentRunner):
@@ -54,7 +54,7 @@ class CodexRunner(BaseAgentRunner):
                 timings=compute_timing_metrics(request_start_ms=request_start_ms),
             )
 
-        temp_dir = tempfile.mkdtemp(prefix="tokpulse_codex_")
+        temp_dir = tempfile.mkdtemp(prefix="agent_tps_codex_")
         self._temp_dirs.append(temp_dir)
 
         cmd = [self.binary_path, "exec"]

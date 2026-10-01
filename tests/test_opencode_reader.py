@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from tokpulse.providers.opencode import OpenCodeDBReader
+from agent_tps.providers.opencode import OpenCodeDBReader
 
 
 @pytest.fixture

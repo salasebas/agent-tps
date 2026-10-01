@@ -7,18 +7,18 @@ import shutil
 import tempfile
 import time
 
-from tokpulse.core.calculator import compute_timing_metrics, compute_tps_metrics
-from tokpulse.core.models import (
+from agent_tps.core.calculator import compute_timing_metrics, compute_tps_metrics
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
     TokenMetrics,
 )
-from tokpulse.providers.base import BaseAgentRunner
+from agent_tps.providers.base import BaseAgentRunner
 
 
-class CursorRunner(BaseAgentRunner):
-    """Executes benchmark prompts through Cursor CLI (cursor-agent or cursor)."""
+class GrokRunner(BaseAgentRunner):
+    """Executes benchmark prompts through xAI's Grok CLI (grok or grok-build)."""
 
     def __init__(self, binary_path: str | None = None, auto_cleanup: bool = True):
         self.binary_path = binary_path or self._detect_binary()
@@ -26,10 +26,10 @@ class CursorRunner(BaseAgentRunner):
         self._temp_dirs: list[str] = []
 
     def _detect_binary(self) -> str:
-        for candidate in ("cursor-agent", "cursor"):
+        for candidate in ("grok-build", "grok"):
             if shutil.which(candidate):
                 return candidate
-        return "cursor"
+        return "grok"
 
     async def cleanup_session(self, session_id: str | None = None) -> None:
         for d in self._temp_dirs:
@@ -45,27 +45,24 @@ class CursorRunner(BaseAgentRunner):
         deadline_timeout_s: float = 60.0,
         on_chunk: Callable[[str], None] | None = None,
     ) -> BenchmarkResult:
-        req_id = f"cursor_{int(time.time() * 1000)}"
+        req_id = f"grok_{int(time.time() * 1000)}"
         request_start_ms = time.time() * 1000.0
 
         if not shutil.which(self.binary_path):
             return BenchmarkResult(
                 id=req_id,
-                provider="cursor",
-                model=model or "auto",
+                provider="grok",
+                model=model or "grok-build",
                 status=BenchmarkStatus.ERROR,
                 timeout_type=TimeoutType.PROCESS_CRASH,
-                error_message=f"Cursor binary '{self.binary_path}' not found in PATH.",
+                error_message=f"Grok binary '{self.binary_path}' not found in PATH.",
                 timings=compute_timing_metrics(request_start_ms=request_start_ms),
             )
 
-        temp_dir = tempfile.mkdtemp(prefix="tokpulse_cursor_")
+        temp_dir = tempfile.mkdtemp(prefix="agent_tps_grok_")
         self._temp_dirs.append(temp_dir)
 
-        cmd = [self.binary_path]
-        if model:
-            cmd.extend(["--model", model])
-        cmd.append(prompt)
+        cmd = [self.binary_path, prompt]
 
         t0 = time.perf_counter()
         tokens_captured = TokenMetrics()
@@ -93,8 +90,8 @@ class CursorRunner(BaseAgentRunner):
                     await self.cleanup_session()
                 return BenchmarkResult(
                     id=req_id,
-                    provider="cursor",
-                    model=model or "auto",
+                    provider="grok",
+                    model=model or "grok-build",
                     status=BenchmarkStatus.ERROR,
                     timeout_type=TimeoutType.PROCESS_CRASH,
                     error_message=stderr_str or f"Process exited with code {proc.returncode}",
@@ -120,8 +117,8 @@ class CursorRunner(BaseAgentRunner):
 
             return BenchmarkResult(
                 id=req_id,
-                provider="cursor",
-                model=model or "auto",
+                provider="grok",
+                model=model or "grok-build",
                 status=BenchmarkStatus.SUCCESS,
                 tokens=tokens_captured,
                 timings=timings,
@@ -133,8 +130,8 @@ class CursorRunner(BaseAgentRunner):
                 await self.cleanup_session()
             return BenchmarkResult(
                 id=req_id,
-                provider="cursor",
-                model=model or "auto",
+                provider="grok",
+                model=model or "grok-build",
                 status=BenchmarkStatus.TIMEOUT,
                 timeout_type=TimeoutType.DEADLINE_TIMEOUT,
                 error_message=f"Execution exceeded deadline timeout ({deadline_timeout_s}s)",

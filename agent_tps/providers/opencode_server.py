@@ -8,15 +8,15 @@ import time
 
 import httpx
 
-from tokpulse.core.calculator import compute_timing_metrics, compute_tps_metrics
-from tokpulse.core.models import (
+from agent_tps.core.calculator import compute_timing_metrics, compute_tps_metrics
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
     TokenMetrics,
 )
-from tokpulse.providers.base import BaseAgentRunner
-from tokpulse.providers.opencode import OpenCodeDBReader
+from agent_tps.providers.base import BaseAgentRunner
+from agent_tps.providers.opencode import OpenCodeDBReader
 
 
 class OpenCodeServerRunner(BaseAgentRunner):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 import math
 
-from tokpulse.core.models import (
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     ConcurrencyReport,

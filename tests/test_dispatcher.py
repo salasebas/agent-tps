@@ -1,13 +1,13 @@
 import pytest
 
-from tokpulse.providers.antigravity import AntigravityRunner
-from tokpulse.providers.claude import ClaudeCodeRunner
-from tokpulse.providers.codex import CodexRunner
-from tokpulse.providers.cursor import CursorRunner
-from tokpulse.providers.dispatcher import get_runner_for_provider
-from tokpulse.providers.grok import GrokRunner
-from tokpulse.providers.opencode import OpenCodeRunner
-from tokpulse.providers.opencode_server import OpenCodeServerRunner
+from agent_tps.providers.antigravity import AntigravityRunner
+from agent_tps.providers.claude import ClaudeCodeRunner
+from agent_tps.providers.codex import CodexRunner
+from agent_tps.providers.cursor import CursorRunner
+from agent_tps.providers.dispatcher import get_runner_for_provider
+from agent_tps.providers.grok import GrokRunner
+from agent_tps.providers.opencode import OpenCodeRunner
+from agent_tps.providers.opencode_server import OpenCodeServerRunner
 
 
 def test_dispatcher_resolution():

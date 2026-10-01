@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from tokpulse.core.models import BenchmarkStatus, TimeoutType
-from tokpulse.providers.opencode import OpenCodeRunner
+from agent_tps.core.models import BenchmarkStatus, TimeoutType
+from agent_tps.providers.opencode import OpenCodeRunner
 
 
 @pytest.fixture

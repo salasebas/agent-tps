@@ -1,4 +1,4 @@
-"""Command-line interface for TokPulse."""
+"""Command-line interface for Agent-TPS."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 import typer
 
-from tokpulse.core.concurrency import ConcurrencyRunner
-from tokpulse.providers.dispatcher import get_runner_for_provider
-from tokpulse.providers.opencode import OpenCodeDBReader
-from tokpulse.storage.store import BenchmarkStorage
-from tokpulse.ui.reporter import (
+from agent_tps.core.concurrency import ConcurrencyRunner
+from agent_tps.providers.dispatcher import get_runner_for_provider
+from agent_tps.providers.opencode import OpenCodeDBReader
+from agent_tps.storage.store import BenchmarkStorage
+from agent_tps.ui.reporter import (
     export_report_to_json,
     render_benchmark_result,
     render_concurrency_report,
@@ -23,7 +23,7 @@ from tokpulse.ui.reporter import (
 )
 
 app = typer.Typer(
-    name="tokpulse",
+    name="agent-tps",
     help="High-Velocity Benchmark & Concurrency Profiler for Coding Agents (OpenCode, Cursor, Grok, Antigravity, Codex, Claude).",
     add_completion=False,
     invoke_without_command=True,
@@ -37,7 +37,7 @@ storage = BenchmarkStorage()
 def main_callback(ctx: typer.Context):
     """If no subcommand is passed, launch the interactive TUI."""
     if ctx.invoked_subcommand is None:
-        from tokpulse.ui.interactive import run_interactive_tui
+        from agent_tps.ui.interactive import run_interactive_tui
 
         run_interactive_tui()
 
@@ -45,7 +45,7 @@ def main_callback(ctx: typer.Context):
 @app.command("ui")
 def ui_command():
     """Launch the interactive terminal UI with fuzzy model search and reports inspector."""
-    from tokpulse.ui.interactive import run_interactive_tui
+    from agent_tps.ui.interactive import run_interactive_tui
 
     run_interactive_tui()
 
@@ -200,7 +200,7 @@ def view_run(
 ):
     """View a single benchmark report standalone on the screen."""
     if not run_id:
-        from tokpulse.ui.interactive import interactive_view_runs
+        from agent_tps.ui.interactive import interactive_view_runs
 
         interactive_view_runs()
         return

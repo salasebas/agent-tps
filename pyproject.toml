@@ -1,7 +1,7 @@
 [project]
-name = "tokpulse"
+name = "agent-tps"
 version = "0.2.0"
-description = "High-Velocity Benchmark & Concurrency Profiler for Coding Agents"
+description = "Command-line TPS, latency, and concurrency profiler for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -21,10 +21,8 @@ dev = [
 ]
 
 [project.scripts]
-tokpulse = "tokpulse.cli:main"
-tp = "tokpulse.cli:main"
-# Backward-compatibility alias
-tps-bench = "tokpulse.cli:main"
+agent-tps = "agent_tps.cli:main"
+atps = "agent_tps.cli:main"
 
 [build-system]
 requires = ["hatchling"]

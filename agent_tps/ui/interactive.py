@@ -1,4 +1,4 @@
-"""Clean interactive terminal user interface for TokPulse.
+"""Clean interactive terminal user interface for Agent-TPS.
 
 Inspired by modern developer CLIs (Grok, Claude, OpenCode):
 - Instant fuzzy model search across all coding agent drivers
@@ -19,12 +19,12 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.text import Text
 
-from tokpulse.core.concurrency import ConcurrencyRunner
-from tokpulse.providers.dispatcher import get_runner_for_provider
-from tokpulse.providers.opencode import OpenCodeDBReader
-from tokpulse.providers.registry import PROVIDERS_CATALOG, get_all_models_flat
-from tokpulse.storage.store import BenchmarkStorage
-from tokpulse.ui.reporter import (
+from agent_tps.core.concurrency import ConcurrencyRunner
+from agent_tps.providers.dispatcher import get_runner_for_provider
+from agent_tps.providers.opencode import OpenCodeDBReader
+from agent_tps.providers.registry import PROVIDERS_CATALOG, get_all_models_flat
+from agent_tps.storage.store import BenchmarkStorage
+from agent_tps.ui.reporter import (
     render_benchmark_result,
     render_concurrency_report,
     render_opencode_sessions,
@@ -36,9 +36,9 @@ storage = BenchmarkStorage()
 
 
 def print_banner() -> None:
-    """Prints the sleek TokPulse header."""
+    """Prints the sleek Agent-TPS header."""
     header_text = Text()
-    header_text.append("⚡ TokPulse ", style="bold cyan")
+    header_text.append("⚡ Agent-TPS ", style="bold cyan")
     header_text.append("v0.2.0\n", style="dim")
     header_text.append(
         "Coding Agent Velocity & Concurrency Profiler\n",
@@ -321,7 +321,7 @@ def interactive_opencode_history() -> None:
 
 
 def run_interactive_tui() -> None:
-    """Main loop for the TokPulse interactive terminal interface."""
+    """Main loop for the Agent-TPS interactive terminal interface."""
     while True:
         print_banner()
         choice = inquirer.select(

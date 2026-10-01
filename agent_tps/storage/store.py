@@ -1,4 +1,4 @@
-"""Privacy-first local storage for TokPulse benchmark metrics.
+"""Privacy-first local storage for agent-tps benchmark metrics.
 
 Stores only performance telemetry (TPS, TTFT, latencies, tokens, errors).
 Zero chat transcripts, prompts, or LLM generated outputs are retained on disk.
@@ -11,8 +11,8 @@ from pathlib import Path
 import time
 from typing import Any
 
-from tokpulse.config import get_runs_dir
-from tokpulse.core.models import BenchmarkResult
+from agent_tps.config import get_runs_dir
+from agent_tps.core.models import BenchmarkResult
 
 
 class BenchmarkStorage:

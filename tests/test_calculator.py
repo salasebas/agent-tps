@@ -1,11 +1,11 @@
-from tokpulse.core.calculator import (
+from agent_tps.core.calculator import (
     aggregate_concurrency_results,
     calculate_jitter,
     calculate_percentile,
     compute_timing_metrics,
     compute_tps_metrics,
 )
-from tokpulse.core.models import (
+from agent_tps.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
