@@ -324,7 +324,7 @@ def render_runs_table(runs: list[dict[str, Any]]) -> None:
 
 def render_concurrency_report(report: ConcurrencyReport) -> None:
     """Renders multi-agent stress benchmark and throughput results."""
-    title = f"⚡ Subagents Concurrency Report (Concurrency: {report.concurrency_level} Workers)"
+    title = f"⚡ Concurrency Stress Report (Workers: {report.concurrency_level})"
     table = Table(title=title, show_header=True, header_style="bold cyan")
     table.add_column("Metric", style="dim")
     table.add_column("Value", justify="right", style="bold")

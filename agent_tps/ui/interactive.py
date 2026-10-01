@@ -187,11 +187,13 @@ def select_model_interactive() -> tuple[str, str]:
 
         p_info = PROVIDERS_CATALOG[provider]
         model_choices = [Choice(value=m.id, name=f"{m.name} [{m.id}]") for m in p_info.models]
-        model_choices.append(Choice(value="custom", name="✍️ Custom Model Slug..."))
+        model_choices.append(Choice(value="custom", name="✍️  Custom Model Slug..."))
 
         selected_model = inquirer.select(
             message=f"{p_info.name} Model:",
             choices=model_choices,
+            max_height=6,
+            instruction="(↑/↓ to scroll models)",
         ).execute()
 
         if selected_model == "custom":
@@ -245,7 +247,7 @@ def interactive_benchmark() -> None:
 
 
 def interactive_stress_test() -> None:
-    """Runs a concurrent subagents stress benchmark."""
+    """Runs a concurrent parallel workers stress benchmark."""
     console.print("\n[bold cyan]─── 🔥 Stress Test ───[/bold cyan]")
 
     provider_choices = [
@@ -261,29 +263,72 @@ def interactive_stress_test() -> None:
         default="opencode",
     ).execute()
 
-    concurrency_str = inquirer.select(
-        message="Workers (Subagents):",
-        choices=["2", "4", "8", "16"],
+    p_info = PROVIDERS_CATALOG[target]
+    model_choices = [Choice(m.id, f"{m.name} [{m.id}]") for m in p_info.models]
+    model_choices.append(Choice("custom", "✍️  Custom Model Slug..."))
+
+    selected_model = inquirer.select(
+        message=f"Model ({p_info.name}):",
+        choices=model_choices,
+        max_height=6,
+        instruction="(↑/↓ to scroll models)",
+    ).execute()
+
+    if selected_model == "custom":
+        selected_model = inquirer.text(message="Enter Model Slug:").execute().strip()
+
+    worker_choices = [
+        "1",
+        "2",
+        "4",
+        "8",
+        "16",
+        "32",
+        "64",
+        "128",
+        Choice("custom", "✍️  Custom Number..."),
+    ]
+    concurrency_ans = inquirer.select(
+        message="Workers (Parallel Processes):",
+        choices=worker_choices,
         default="4",
     ).execute()
-    concurrency = int(concurrency_str)
 
-    total_str = (
-        inquirer.text(
-            message="Total Requests:",
-            default=str(concurrency * 2),
+    if concurrency_ans == "custom":
+        c_input = inquirer.text(message="Enter Number of Workers:", default="4").execute().strip()
+        concurrency = int(c_input) if c_input.isdigit() and int(c_input) > 0 else 4
+    else:
+        concurrency = int(concurrency_ans)
+
+    total_choices = [
+        Choice(str(concurrency), f"{concurrency} (1 per worker)"),
+        Choice(str(concurrency * 2), f"{concurrency * 2} (2 per worker)"),
+        Choice(str(concurrency * 4), f"{concurrency * 4} (4 per worker)"),
+        Choice(str(concurrency * 8), f"{concurrency * 8} (8 per worker)"),
+        Choice("custom", "✍️  Custom Total..."),
+    ]
+    total_ans = inquirer.select(
+        message="Total Requests:",
+        choices=total_choices,
+        default=str(concurrency * 2),
+    ).execute()
+
+    if total_ans == "custom":
+        t_input = (
+            inquirer.text(message="Enter Total Requests:", default=str(concurrency * 2)).execute().strip()
         )
-        .execute()
-        .strip()
-    )
-    total = int(total_str) if total_str.isdigit() else (concurrency * 2)
+        total = int(t_input) if t_input.isdigit() and int(t_input) > 0 else (concurrency * 2)
+    else:
+        total = int(total_ans)
 
     prompt = select_prompt_interactive(default_custom="Output a quick 1-sentence Python tip.")
 
     runner = get_runner_for_provider(target)
     orchestrator = ConcurrencyRunner(runner)
 
-    console.print(f"\n[cyan]Spawning {concurrency} workers (Total: {total} runs)...[/cyan]")
+    console.print(
+        f"\n[cyan]Spawning {concurrency} parallel workers for {target.upper()} ({selected_model}) (Total: {total} runs)...[/cyan]"
+    )
 
     with Progress(
         SpinnerColumn(),
@@ -304,6 +349,7 @@ def interactive_stress_test() -> None:
                 concurrency=concurrency,
                 total_requests=total,
                 prompt=prompt,
+                model=selected_model,
                 on_complete=on_complete,
             )
         )
@@ -311,7 +357,7 @@ def interactive_stress_test() -> None:
     render_concurrency_report(report)
 
     # Save stress test report to disk
-    saved_path = storage.save_concurrency_run(report, target=target)
+    saved_path = storage.save_concurrency_run(report, target=target, model=selected_model)
     console.print(f"[green]✓ Stress test report saved to {saved_path.name}[/green]\n")
 
 
