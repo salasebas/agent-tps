@@ -1,0 +1,22 @@
+[project]
+name = "agent-tps-bench"
+version = "0.1.0"
+description = "High-precision benchmark suite for Agent and LLM TPS, TTFT, Timeouts, Concurrency, and Rate Limits"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "pydantic>=2.13.5",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "rich>=15.0.0",
+    "typer>=0.27.2",
+]
+
+[project.scripts]
+agent-tps = "agent_tps_bench.cli:main"
+tps-bench = "agent_tps_bench.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
