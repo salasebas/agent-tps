@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
+from agent_tps_bench.agent_dispatcher import get_runner_for_provider
 from agent_tps_bench.concurrency import ConcurrencyRunner
 from agent_tps_bench.llm_stream_runner import LLMStreamRunner
 from agent_tps_bench.models import BenchmarkResult
@@ -21,12 +22,101 @@ from agent_tps_bench.reporter import (
     render_concurrency_sweep,
     render_opencode_sessions,
 )
+from agent_tps_bench.storage import BenchmarkStorage
 
 app = typer.Typer(
     name="agent-tps",
     help="High-precision benchmark suite for Agent and LLM TPS, TTFT, Timeouts, Concurrency, and Rate Limits.",
     add_completion=False,
+    invoke_without_command=True,
 )
+
+storage = BenchmarkStorage()
+
+
+@app.callback()
+def main_callback(ctx: typer.Context):
+    """If no subcommand is passed, launch the interactive TUI."""
+    if ctx.invoked_subcommand is None:
+        from agent_tps_bench.interactive import run_interactive_tui
+        run_interactive_tui()
+
+
+@app.command("ui")
+def ui_command():
+    """Launch the full interactive TUI menu with fuzzy model search and history."""
+    from agent_tps_bench.interactive import run_interactive_tui
+    run_interactive_tui()
+
+
+@app.command("bench")
+def unified_bench(
+    prompt: str = typer.Option(
+        "Explica en 2 líneas la diferencia entre concurrencia y paralelismo.",
+        "--prompt",
+        "-p",
+        help="Prompt to execute",
+    ),
+    provider: str = typer.Option(
+        "opencode",
+        "--provider",
+        help="Provider or agent: opencode, claude, codex, grok, cursor, antigravity, groq, openai, openrouter, ollama",
+    ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Model slug or name",
+    ),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", help="API key for cloud API providers"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="Custom base URL for OpenAI-compatible providers"),
+    ttft_timeout: float = typer.Option(15.0, "--ttft-timeout", help="Max seconds to wait for first token"),
+    stall_timeout: float = typer.Option(10.0, "--stall-timeout", help="Max seconds between consecutive tokens"),
+    deadline_timeout: float = typer.Option(60.0, "--deadline-timeout", help="Total execution timeout in seconds"),
+    output_json: Optional[Path] = typer.Option(None, "--output-json", "-o", help="Export result to JSON"),
+):
+    """Runs a benchmark prompt against any supported agent or provider."""
+    console.print(f"[bold cyan]Launching TPS benchmark for {provider.upper()}...[/bold cyan]")
+    runner = get_runner_for_provider(provider, api_key=api_key, base_url=base_url)
+
+    full_output: list[str] = []
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[yellow]Streaming tokens...[/yellow]", total=None)
+
+        def on_chunk(chunk: str):
+            full_output.append(chunk)
+            progress.update(task, description=f"[green]Streaming: {chunk[:20].strip()}...[/green]")
+
+        result = asyncio.run(
+            runner.run_prompt(
+                prompt=prompt,
+                model=model,
+                ttft_timeout_s=ttft_timeout,
+                stall_timeout_s=stall_timeout,
+                deadline_timeout_s=deadline_timeout,
+                on_chunk=on_chunk,
+            )
+            if hasattr(runner, "run_prompt")
+            else runner.run_stream(
+                model=model or "default",
+                prompt=prompt,
+                connect_timeout_s=8.0,
+                ttft_timeout_s=ttft_timeout,
+                stall_timeout_s=stall_timeout,
+                deadline_timeout_s=deadline_timeout,
+                on_chunk=on_chunk,
+            )
+        )
+
+    render_benchmark_result(result)
+    saved_path = storage.save_run(result, prompt, full_output="".join(full_output))
+    console.print(f"[green]Saved run to {saved_path}[/green]")
+    if output_json:
+        export_report_to_json(result, output_json)
 
 
 @app.command("opencode-bench")
@@ -52,6 +142,7 @@ def opencode_bench(
     console.print(f"[bold cyan]Launching OpenCode TPS benchmark...[/bold cyan]")
     runner = OpenCodeRunner()
 
+    full_output: list[str] = []
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -60,6 +151,7 @@ def opencode_bench(
         task = progress.add_task("[yellow]Streaming tokens from OpenCode...[/yellow]", total=None)
 
         def on_chunk(chunk: str):
+            full_output.append(chunk)
             progress.update(task, description=f"[green]Streaming: {chunk[:20].strip()}...[/green]")
 
         result = asyncio.run(
@@ -74,9 +166,10 @@ def opencode_bench(
         )
 
     render_benchmark_result(result)
+    saved_path = storage.save_run(result, prompt, full_output="".join(full_output))
+    console.print(f"[green]Saved run to {saved_path}[/green]")
     if output_json:
         export_report_to_json(result, output_json)
-        console.print(f"[green]Saved JSON report to {output_json}[/green]")
 
 
 @app.command("opencode-history")
@@ -130,6 +223,11 @@ def stream_bench(
     console.print(f"[bold cyan]Connecting to {provider} stream...[/bold cyan]")
     runner = LLMStreamRunner(base_url=base_url, api_key=api_key, provider=provider)
 
+    full_output: list[str] = []
+
+    def on_ch(chunk: str):
+        full_output.append(chunk)
+
     result = asyncio.run(
         runner.run_stream(
             model=model,
@@ -138,18 +236,20 @@ def stream_bench(
             ttft_timeout_s=ttft_timeout,
             stall_timeout_s=stall_timeout,
             deadline_timeout_s=deadline_timeout,
+            on_chunk=on_ch,
         )
     )
 
     render_benchmark_result(result)
+    saved_path = storage.save_run(result, prompt, full_output="".join(full_output))
+    console.print(f"[green]Saved run to {saved_path}[/green]")
     if output_json:
         export_report_to_json(result, output_json)
-        console.print(f"[green]Saved JSON report to {output_json}[/green]")
 
 
 @app.command("stress")
 def stress_benchmark(
-    target: str = typer.Option("opencode", "--target", "-t", help="Benchmark target: 'opencode' or 'stream'"),
+    target: str = typer.Option("opencode", "--target", "-t", help="Benchmark target: 'opencode', 'claude', 'codex', 'groq', or 'stream'"),
     concurrency: int = typer.Option(4, "--concurrency", "-c", help="Number of concurrent subagents/workers"),
     total: int = typer.Option(8, "--total", "-n", help="Total number of requests to execute"),
     sweep: bool = typer.Option(False, "--sweep", help="Perform progressive concurrency sweep (1, 2, 4, 8)"),
@@ -160,11 +260,7 @@ def stress_benchmark(
     output_json: Optional[Path] = typer.Option(None, "--output-json", "-o"),
 ):
     """Stress tests concurrency scaling, throughput saturation, and rate limits."""
-    if target.lower() in ("opencode-server", "opencode"):
-        # For multi-agent concurrency, OpenCodeServerRunner handles SQLite serialization smoothly
-        runner = OpenCodeServerRunner()
-    else:
-        runner = LLMStreamRunner(base_url=base_url, api_key=api_key, provider="custom")
+    runner = get_runner_for_provider(target, api_key=api_key, base_url=base_url)
     concurrency_orchestrator = ConcurrencyRunner(runner)
 
     if sweep:
@@ -208,6 +304,13 @@ def stress_benchmark(
         render_concurrency_report(report)
         if output_json:
             export_report_to_json(report, output_json)
+
+
+@app.command("runs")
+def list_runs(limit: int = typer.Option(20, "--limit", "-l", help="Number of runs to list")):
+    """Lists saved benchmark runs stored in ~/.agent-tps-bench/runs/"""
+    from agent_tps_bench.interactive import interactive_view_runs
+    interactive_view_runs(interactive=False)
 
 
 def main():

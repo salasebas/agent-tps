@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Output reports & local runs
+*.json
+.pytest_cache/
