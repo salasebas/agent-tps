@@ -1,5 +1,6 @@
 from pathlib import Path
-from agent_tps_bench.models import (
+
+from tokpulse.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
@@ -7,16 +8,12 @@ from agent_tps_bench.models import (
     TokenMetrics,
     TPSMetrics,
 )
-from agent_tps_bench.providers_registry import (
-    get_all_models_flat,
-    get_installed_providers,
-    get_models_for_provider,
-)
-from agent_tps_bench.storage import BenchmarkStorage
+from tokpulse.providers.registry import PROVIDERS_CATALOG, get_all_models_flat
+from tokpulse.storage.store import BenchmarkStorage
 
 
-def test_storage_save_and_list(tmp_path: Path):
-    storage = BenchmarkStorage(storage_dir=tmp_path)
+def test_storage_save_list_and_privacy(tmp_path: Path):
+    storage = BenchmarkStorage(runs_dir=tmp_path)
     res = BenchmarkResult(
         id="test-run-123",
         provider="opencode",
@@ -26,42 +23,66 @@ def test_storage_save_and_list(tmp_path: Path):
         tokens=TokenMetrics(input_tokens=100, output_tokens=50),
         timings=TimingMetrics(request_start_ms=0, completed_ms=1000, ttft_ms=200),
         tps=TPSMetrics(decode_tps=50.0, e2e_tps=50.0),
-        raw_response_preview="Hello world",
     )
-    saved_path = storage.save_run(res, prompt="Test prompt", full_output="Full output text")
+    saved_path = storage.save_run(res)
     assert saved_path.exists()
 
     runs = storage.list_runs()
     assert len(runs) == 1
     assert runs[0]["provider"] == "opencode"
     assert runs[0]["model"] == "longcat-2.5"
-    assert runs[0]["decode_tps"] == 50.0
+    assert runs[0]["tps"]["decode_tps"] == 50.0
 
-    loaded = storage.load_run("test-run-123")
+    # Privacy verification: no raw prompt or chat output stored
+    assert "prompt" not in runs[0]
+    assert "full_output" not in runs[0]
+
+    # Get single run
+    loaded = storage.get_run("test-run-123")
     assert loaded is not None
-    assert loaded["prompt"] == "Test prompt"
-    assert loaded["full_output"] == "Full output text"
+    assert loaded["id"] == "test-run-123"
+
+    # Delete single run
+    deleted = storage.delete_run("test-run-123")
+    assert deleted is True
+    assert len(storage.list_runs()) == 0
 
 
-def test_providers_registry():
-    providers = get_installed_providers()
-    names = [p.name for p in providers]
-    assert "opencode" in names
-    assert "claude" in names
-    assert "codex" in names
-    assert "grok" in names
-    assert "cursor" in names
-    assert "antigravity" in names
-    assert "groq" in names
+def test_storage_clear_all(tmp_path: Path):
+    storage = BenchmarkStorage(runs_dir=tmp_path)
+    for i in range(3):
+        res = BenchmarkResult(
+            id=f"run-{i}",
+            provider="opencode",
+            model="default",
+            status=BenchmarkStatus.SUCCESS,
+            timings=TimingMetrics(request_start_ms=0),
+        )
+        storage.save_run(res)
 
-    # OpenCode models
-    models = get_models_for_provider("opencode")
-    assert len(models) > 0
+    assert len(storage.list_runs()) == 3
+    cleared = storage.clear_all_runs()
+    assert cleared == 3
+    assert len(storage.list_runs()) == 0
 
-    # Claude models
-    claude_models = get_models_for_provider("claude")
-    assert any("sonnet" in m.model for m in claude_models)
 
-    # Flat global search list
+def test_providers_registry_t3code_drivers():
+    # Only T3 Code coding agent drivers must be present
+    expected_providers = {"opencode", "cursor", "grok", "antigravity", "codex", "claude"}
+    assert set(PROVIDERS_CATALOG.keys()) == expected_providers
+
+    # Ensure groq and openrouter are NOT present
+    assert "groq" not in PROVIDERS_CATALOG
+    assert "openrouter" not in PROVIDERS_CATALOG
+
+    # Models catalog checks
+    assert len(PROVIDERS_CATALOG["opencode"].models) > 0
+    assert any("fable" in m.id for m in PROVIDERS_CATALOG["claude"].models)
+    assert any("astra" in m.id for m in PROVIDERS_CATALOG["codex"].models)
+    assert any("grok" in m.id for m in PROVIDERS_CATALOG["grok"].models)
+    assert any("composer" in m.id for m in PROVIDERS_CATALOG["cursor"].models)
+    assert any("antigravity" in m.id for m in PROVIDERS_CATALOG["antigravity"].models)
+
+    # Flat fuzzy search list
     flat = get_all_models_flat()
-    assert len(flat) > 20
+    assert len(flat) >= 15

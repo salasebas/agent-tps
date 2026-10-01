@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import math
-from typing import Sequence
-from agent_tps_bench.models import (
+
+from tokpulse.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     ConcurrencyReport,
+    TimeoutType,
     TimingMetrics,
     TokenMetrics,
     TPSMetrics,
-    TimeoutType,
 )
 
 
@@ -99,90 +100,138 @@ def compute_tps_metrics(tokens: TokenMetrics, timings: TimingMetrics) -> TPSMetr
     # Decode TPS: tokens generated during active generation phase
     decode_tps = 0.0
     if timings.generation_duration_ms and timings.generation_duration_ms > 0:
-        gen_seconds = timings.generation_duration_ms / 1000.0
-        decode_tps = generated / gen_seconds
+        decode_tps = (generated / timings.generation_duration_ms) * 1000.0
 
-    # E2E TPS: tokens generated over the entire request lifecycle (including TTFT)
+    # End-to-end TPS: tokens generated relative to entire request turn duration
     e2e_tps = 0.0
     if timings.total_duration_ms and timings.total_duration_ms > 0:
-        total_seconds = timings.total_duration_ms / 1000.0
-        e2e_tps = generated / total_seconds
+        e2e_tps = (generated / timings.total_duration_ms) * 1000.0
 
-    # Total throughput TPS: all tokens (input + output + reasoning) / total request time
-    total_throughput_tps = 0.0
+    # Total throughput TPS: total processed (prompt + completion) relative to turn duration
+    total_tps = 0.0
     if timings.total_duration_ms and timings.total_duration_ms > 0:
-        total_seconds = timings.total_duration_ms / 1000.0
-        total_throughput_tps = tokens.total_tokens / total_seconds
+        total_tps = (tokens.total_tokens / timings.total_duration_ms) * 1000.0
 
     return TPSMetrics(
         decode_tps=round(decode_tps, 2),
         e2e_tps=round(e2e_tps, 2),
-        total_throughput_tps=round(total_throughput_tps, 2),
+        total_throughput_tps=round(total_tps, 2),
     )
 
 
-def aggregate_concurrency_results(
+def build_error_benchmark_result(
+    id: str,
+    provider: str,
+    model: str,
+    timeout_type: TimeoutType,
+    error_message: str,
+    request_start_ms: float,
+    first_token_ms: float | None = None,
+    tokens: TokenMetrics | None = None,
+    retry_after_s: float | None = None,
+) -> BenchmarkResult:
+    """Convenience builder for failed/timed-out benchmarks."""
+    now_ms = request_start_ms
+    import time
+
+    now_ms = time.time() * 1000.0
+
+    status = (
+        BenchmarkStatus.RATE_LIMITED
+        if timeout_type == TimeoutType.RATE_LIMIT_429
+        else BenchmarkStatus.TIMEOUT
+        if timeout_type
+        in (
+            TimeoutType.CONNECT_TIMEOUT,
+            TimeoutType.TTFT_TIMEOUT,
+            TimeoutType.STALL_TIMEOUT,
+            TimeoutType.DEADLINE_TIMEOUT,
+        )
+        else BenchmarkStatus.ERROR
+    )
+
+    timings = compute_timing_metrics(
+        request_start_ms=request_start_ms,
+        first_token_ms=first_token_ms,
+        completed_ms=now_ms,
+    )
+    tokens_actual = tokens or TokenMetrics()
+    tps = compute_tps_metrics(tokens_actual, timings)
+
+    return BenchmarkResult(
+        id=id,
+        provider=provider,
+        model=model,
+        status=status,
+        timeout_type=timeout_type,
+        tokens=tokens_actual,
+        timings=timings,
+        tps=tps,
+        error_message=error_message,
+        retry_after_s=retry_after_s,
+    )
+
+
+def compute_concurrency_report(
     concurrency_level: int,
     results: list[BenchmarkResult],
     wall_clock_duration_s: float,
+    baseline_decode_tps: float | None = None,
     baseline_single_worker_tps: float | None = None,
 ) -> ConcurrencyReport:
-    """Aggregates a set of benchmark results across concurrent workers."""
+    """Aggregates multi-agent stress results and calculates TPS degradation."""
+    baseline = baseline_decode_tps or baseline_single_worker_tps
     total = len(results)
-    successful = [r for r in results if r.status == BenchmarkStatus.SUCCESS]
-    timed_out = [r for r in results if r.status == BenchmarkStatus.TIMEOUT]
-    rate_limited = [r for r in results if r.status == BenchmarkStatus.RATE_LIMITED]
-    failed = [r for r in results if r.status == BenchmarkStatus.ERROR]
+    successes = [r for r in results if r.status == BenchmarkStatus.SUCCESS]
+    timeouts = [r for r in results if r.status == BenchmarkStatus.TIMEOUT]
+    rate_limits = [r for r in results if r.status == BenchmarkStatus.RATE_LIMITED]
+    failures = [
+        r
+        for r in results
+        if r.status not in (BenchmarkStatus.SUCCESS, BenchmarkStatus.TIMEOUT, BenchmarkStatus.RATE_LIMITED)
+    ]
 
-    total_generated_tokens = sum(r.tokens.generated_tokens for r in successful)
-
+    total_generated_tokens = sum(r.tokens.generated_tokens for r in results)
     aggregate_decode_tps = (
-        round(total_generated_tokens / wall_clock_duration_s, 2)
-        if wall_clock_duration_s > 0
-        else 0.0
+        (total_generated_tokens / wall_clock_duration_s) if wall_clock_duration_s > 0 else 0.0
     )
 
-    all_ttfts = [r.timings.ttft_ms for r in successful if r.timings.ttft_ms is not None]
-    mean_ttft = sum(all_ttfts) / len(all_ttfts) if all_ttfts else 0.0
-    p50_ttft = calculate_percentile(all_ttfts, 50.0)
-    p95_ttft = calculate_percentile(all_ttfts, 95.0)
-    p99_ttft = calculate_percentile(all_ttfts, 99.0)
-
-    worker_decode_tps_list = [r.tps.decode_tps for r in successful if r.tps.decode_tps > 0]
+    worker_decode_tps_list = [r.tps.decode_tps for r in successes if r.tps.decode_tps > 0]
     mean_worker_decode_tps = (
-        sum(worker_decode_tps_list) / len(worker_decode_tps_list)
-        if worker_decode_tps_list
-        else 0.0
+        sum(worker_decode_tps_list) / len(worker_decode_tps_list) if worker_decode_tps_list else 0.0
     )
 
-    worker_e2e_tps_list = [r.tps.e2e_tps for r in successful if r.tps.e2e_tps > 0]
-    aggregate_e2e_tps = (
-        round(sum(worker_e2e_tps_list), 2)
-        if worker_e2e_tps_list
-        else 0.0
-    )
+    ttfts = [r.timings.ttft_ms for r in results if r.timings.ttft_ms is not None]
+    mean_ttft = sum(ttfts) / len(ttfts) if ttfts else 0.0
+    p50_ttft = calculate_percentile(ttfts, 50.0)
+    p95_ttft = calculate_percentile(ttfts, 95.0)
+    p99_ttft = calculate_percentile(ttfts, 99.0)
 
-    # Degradation percent compared to single worker baseline
     degradation = 0.0
-    if baseline_single_worker_tps and baseline_single_worker_tps > 0 and mean_worker_decode_tps > 0:
-        drop = baseline_single_worker_tps - mean_worker_decode_tps
-        degradation = round(max(0.0, (drop / baseline_single_worker_tps) * 100.0), 2)
+    if baseline and baseline > 0 and mean_worker_decode_tps > 0:
+        degradation = max(0.0, ((baseline - mean_worker_decode_tps) / baseline) * 100.0)
 
     return ConcurrencyReport(
         concurrency_level=concurrency_level,
         total_requests=total,
-        successful_requests=len(successful),
-        failed_requests=len(failed),
-        timed_out_requests=len(timed_out),
-        rate_limited_requests=len(rate_limited),
-        wall_clock_duration_s=round(wall_clock_duration_s, 3),
-        aggregate_decode_tps=aggregate_decode_tps,
-        aggregate_e2e_tps=aggregate_e2e_tps,
+        successful_requests=len(successes),
+        failed_requests=len(failures),
+        timed_out_requests=len(timeouts),
+        rate_limited_requests=len(rate_limits),
+        wall_clock_duration_s=round(wall_clock_duration_s, 2),
+        aggregate_decode_tps=round(aggregate_decode_tps, 2),
+        aggregate_e2e_tps=round(
+            (total_generated_tokens / wall_clock_duration_s) if wall_clock_duration_s > 0 else 0.0,
+            2,
+        ),
         mean_ttft_ms=round(mean_ttft, 2),
         p50_ttft_ms=round(p50_ttft, 2),
         p95_ttft_ms=round(p95_ttft, 2),
         p99_ttft_ms=round(p99_ttft, 2),
         mean_worker_decode_tps=round(mean_worker_decode_tps, 2),
-        degradation_percent=degradation,
+        degradation_percent=round(degradation, 2),
         results=results,
     )
+
+
+aggregate_concurrency_results = compute_concurrency_report

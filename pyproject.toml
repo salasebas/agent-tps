@@ -1,7 +1,7 @@
 [project]
-name = "agent-tps-bench"
-version = "0.1.0"
-description = "High-precision benchmark suite for Agent and LLM TPS, TTFT, Timeouts, Concurrency, and Rate Limits"
+name = "tokpulse"
+version = "0.2.0"
+description = "High-Velocity Benchmark & Concurrency Profiler for Coding Agents"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -9,16 +9,51 @@ dependencies = [
     "inquirerpy>=0.3.4",
     "prompt-toolkit>=3.0.53",
     "pydantic>=2.13.5",
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
     "rich>=15.0.0",
     "typer>=0.27.2",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.9",
+]
+
 [project.scripts]
-agent-tps = "agent_tps_bench.cli:main"
-tps-bench = "agent_tps_bench.cli:main"
+tokpulse = "tokpulse.cli:main"
+tp = "tokpulse.cli:main"
+# Backward-compatibility alias
+tps-bench = "tokpulse.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import sorting)
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501", # line length violations (handled by formatter)
+    "B008", # do not perform function calls in argument defaults (Typer dependency injection)
+    "SIM108", # use ternary operator instead of if-else
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

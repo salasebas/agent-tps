@@ -1,8 +1,9 @@
-import asyncio
 from pathlib import Path
+
 import pytest
-from agent_tps_bench.models import BenchmarkStatus, TimeoutType
-from agent_tps_bench.opencode_runner import OpenCodeRunner
+
+from tokpulse.core.models import BenchmarkStatus, TimeoutType
+from tokpulse.providers.opencode import OpenCodeRunner
 
 
 @pytest.fixture
@@ -17,11 +18,11 @@ if "--format" in sys.argv and "json" in sys.argv:
     print(json.dumps({"type": "step_start", "timestamp": int(time.time()*1000), "sessionID": "ses_mock_exec"}))
     sys.stdout.flush()
     time.sleep(0.05)
-    
+
     # 2. text tokens
     print(json.dumps({
-        "type": "text", 
-        "timestamp": int(time.time()*1000), 
+        "type": "text",
+        "timestamp": int(time.time()*1000),
         "sessionID": "ses_mock_exec",
         "part": {"type": "text", "text": "Mock response line 1\\n"}
     }))
@@ -29,8 +30,8 @@ if "--format" in sys.argv and "json" in sys.argv:
     time.sleep(0.05)
 
     print(json.dumps({
-        "type": "text", 
-        "timestamp": int(time.time()*1000), 
+        "type": "text",
+        "timestamp": int(time.time()*1000),
         "sessionID": "ses_mock_exec",
         "part": {"type": "text", "text": "Mock response line 2\\n"}
     }))
@@ -38,8 +39,8 @@ if "--format" in sys.argv and "json" in sys.argv:
 
     # 3. step_finish
     print(json.dumps({
-        "type": "step_finish", 
-        "timestamp": int(time.time()*1000), 
+        "type": "step_finish",
+        "timestamp": int(time.time()*1000),
         "sessionID": "ses_mock_exec",
         "part": {
             "type": "step-finish",

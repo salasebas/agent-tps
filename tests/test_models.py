@@ -1,4 +1,4 @@
-from agent_tps_bench.models import (
+from tokpulse.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,

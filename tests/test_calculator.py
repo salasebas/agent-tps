@@ -1,12 +1,11 @@
-import pytest
-from agent_tps_bench.calculator import (
+from tokpulse.core.calculator import (
     aggregate_concurrency_results,
     calculate_jitter,
     calculate_percentile,
     compute_timing_metrics,
     compute_tps_metrics,
 )
-from agent_tps_bench.models import (
+from tokpulse.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
@@ -55,7 +54,7 @@ def test_compute_tps_metrics():
         first_token_ms=1200.0,
         completed_ms=2200.0,
         generation_duration_ms=1000.0,  # 1.0 second
-        total_duration_ms=1200.0,       # 1.2 seconds
+        total_duration_ms=1200.0,  # 1.2 seconds
     )
     tps = compute_tps_metrics(tokens, timings)
     # generated = 80 + 20 = 100 tokens. In 1.0s gen time -> decode_tps = 100.0
@@ -75,13 +74,23 @@ def test_aggregate_concurrency_results():
             status=BenchmarkStatus.SUCCESS,
             tokens=TokenMetrics(output_tokens=100),
             timings=TimingMetrics(
-                request_start_ms=0, first_token_ms=200, completed_ms=1200,
-                ttft_ms=200, generation_duration_ms=1000, total_duration_ms=1200
+                request_start_ms=0,
+                first_token_ms=200,
+                completed_ms=1200,
+                ttft_ms=200,
+                generation_duration_ms=1000,
+                total_duration_ms=1200,
             ),
-            tps=compute_tps_metrics(TokenMetrics(output_tokens=100), TimingMetrics(
-                request_start_ms=0, first_token_ms=200, completed_ms=1200,
-                generation_duration_ms=1000, total_duration_ms=1200
-            ))
+            tps=compute_tps_metrics(
+                TokenMetrics(output_tokens=100),
+                TimingMetrics(
+                    request_start_ms=0,
+                    first_token_ms=200,
+                    completed_ms=1200,
+                    generation_duration_ms=1000,
+                    total_duration_ms=1200,
+                ),
+            ),
         ),
         BenchmarkResult(
             id="2",
@@ -90,7 +99,7 @@ def test_aggregate_concurrency_results():
             status=BenchmarkStatus.RATE_LIMITED,
             timeout_type=TimeoutType.RATE_LIMIT_429,
             timings=TimingMetrics(request_start_ms=0, completed_ms=100),
-        )
+        ),
     ]
     report = aggregate_concurrency_results(
         concurrency_level=2,

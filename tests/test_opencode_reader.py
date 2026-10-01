@@ -1,9 +1,10 @@
 import json
 from pathlib import Path
 import sqlite3
+
 import pytest
 
-from agent_tps_bench.opencode_reader import OpenCodeDBReader
+from tokpulse.providers.opencode import OpenCodeDBReader
 
 
 @pytest.fixture
@@ -66,7 +67,8 @@ def mock_opencode_db(tmp_path: Path) -> Path:
         conn.execute("INSERT INTO project (id) VALUES ('proj_1')")
         # Insert session
         model_json = json.dumps({"id": "longcat-2.5", "providerID": "opencode"})
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO session (
                 id, project_id, slug, directory, title, version,
                 time_created, time_updated, agent, model, cost,
@@ -77,28 +79,40 @@ def mock_opencode_db(tmp_path: Path) -> Path:
                 1700000000000, 1700000005000, 'build', ?, 0.002,
                 1000, 200, 50, 500, 0
             )
-        """, (model_json,))
+        """,
+            (model_json,),
+        )
 
         # Insert message
-        msg_data = json.dumps({
-            "role": "assistant",
-            "time": {"created": 1700000001000, "completed": 1700000004500},
-        })
-        conn.execute("""
+        msg_data = json.dumps(
+            {
+                "role": "assistant",
+                "time": {"created": 1700000001000, "completed": 1700000004500},
+            }
+        )
+        conn.execute(
+            """
             INSERT INTO message (id, session_id, time_created, time_updated, data)
             VALUES ('msg_1', 'ses_mock_1', 1700000001000, 1700000004500, ?)
-        """, (msg_data,))
+        """,
+            (msg_data,),
+        )
 
         # Insert parts with text timing
-        part_data = json.dumps({
-            "type": "text",
-            "text": "Hello world response",
-            "time": {"start": 1700000001500, "end": 1700000004000}
-        })
-        conn.execute("""
+        part_data = json.dumps(
+            {
+                "type": "text",
+                "text": "Hello world response",
+                "time": {"start": 1700000001500, "end": 1700000004000},
+            }
+        )
+        conn.execute(
+            """
             INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
             VALUES ('prt_1', 'msg_1', 'ses_mock_1', 1700000001500, 1700000004000, ?)
-        """, (part_data,))
+        """,
+            (part_data,),
+        )
 
     conn.close()
     return db_file

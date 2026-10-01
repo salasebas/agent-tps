@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 
-class TimeoutType(str, Enum):
+class TimeoutType(StrEnum):
     NONE = "none"
     CONNECT_TIMEOUT = "connect_timeout"
     TTFT_TIMEOUT = "ttft_timeout"
@@ -18,7 +19,7 @@ class TimeoutType(str, Enum):
     UNKNOWN_ERROR = "unknown_error"
 
 
-class BenchmarkStatus(str, Enum):
+class BenchmarkStatus(StrEnum):
     SUCCESS = "success"
     TIMEOUT = "timeout"
     RATE_LIMITED = "rate_limited"
@@ -86,6 +87,7 @@ class BenchmarkResult(BaseModel):
     tps: TPSMetrics = Field(default_factory=TPSMetrics)
     error_message: str | None = None
     retry_after_s: float | None = None
+    # We do not store sensitive prompt or complete chat logs for privacy
     raw_response_preview: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 

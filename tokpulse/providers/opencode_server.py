@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-import json
+from collections.abc import Callable
+import contextlib
 import os
-from pathlib import Path
 import time
-from typing import Any, Callable
+
 import httpx
 
-from agent_tps_bench.calculator import compute_timing_metrics, compute_tps_metrics
-from agent_tps_bench.models import (
+from tokpulse.core.calculator import compute_timing_metrics, compute_tps_metrics
+from tokpulse.core.models import (
     BenchmarkResult,
     BenchmarkStatus,
     TimeoutType,
-    TimingMetrics,
     TokenMetrics,
-    TPSMetrics,
 )
+from tokpulse.providers.base import BaseAgentRunner
+from tokpulse.providers.opencode import OpenCodeDBReader
 
 
-class OpenCodeServerRunner:
+class OpenCodeServerRunner(BaseAgentRunner):
     """Interacts with OpenCode through its HTTP server (opencode serve), matching T3 Code's architecture.
 
     Allows concurrent subagents to run without SQLite database-locking conflicts.
@@ -31,12 +31,15 @@ class OpenCodeServerRunner:
         auto_spawn: bool = True,
         port: int = 4096,
         binary_path: str = "opencode",
+        auto_cleanup: bool = True,
     ):
         self.base_url = base_url.rstrip("/")
         self.auto_spawn = auto_spawn
         self.port = port
         self.binary_path = binary_path
+        self.auto_cleanup = auto_cleanup
         self._server_proc: asyncio.subprocess.Process | None = None
+        self._db_reader = OpenCodeDBReader()
 
     async def is_healthy(self) -> bool:
         """Checks if the OpenCode server is responding to health checks."""
@@ -81,13 +84,11 @@ class OpenCodeServerRunner:
                 self._server_proc.terminate()
                 await asyncio.wait_for(self._server_proc.wait(), timeout=2.0)
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     self._server_proc.kill()
-                except Exception:
-                    pass
             self._server_proc = None
 
-    async def create_session(self, title: str = "TPS Benchmark") -> str:
+    async def create_session(self, title: str = "TokPulse Benchmark") -> str:
         """Creates a new session on the OpenCode server."""
         await self.ensure_server()
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -98,6 +99,25 @@ class OpenCodeServerRunner:
             res.raise_for_status()
             data = res.json()
             return data["id"]
+
+    async def cleanup_session(self, session_id: str | None = None) -> None:
+        """Deletes the benchmark session from the server and database for absolute privacy."""
+        if not session_id:
+            return
+
+        # 1. Attempt HTTP DELETE
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.delete(f"{self.base_url}/session/{session_id}")
+        except Exception:
+            pass
+
+        # 2. SQLite direct purge fallback
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._db_reader.delete_session, session_id)
+        except Exception:
+            pass
 
     async def run_prompt(
         self,
@@ -110,7 +130,7 @@ class OpenCodeServerRunner:
     ) -> BenchmarkResult:
         """Executes a prompt against OpenCode Server and measures latency, TTFT, and TPS."""
         await self.ensure_server()
-        session_id = await self.create_session(f"Bench {int(time.time())}")
+        session_id = await self.create_session(f"TokPulse_{int(time.time())}")
         req_id = f"opencode_srv_{int(time.time() * 1000)}"
 
         t0 = time.perf_counter()
@@ -118,17 +138,14 @@ class OpenCodeServerRunner:
 
         t_connected: float | None = None
         t_first_token: float | None = None
-        t_last_token: float | None = None
         inter_token_latencies: list[float] = []
         tokens_captured = TokenMetrics()
-        text_preview_parts: list[str] = []
 
         timed_out = False
         timeout_reason = TimeoutType.NONE
         status = BenchmarkStatus.SUCCESS
         error_message: str | None = None
 
-        # Format model payload if supplied (e.g. "opencode/longcat-2.5-preview-free")
         parsed_model = None
         if model:
             if "/" in model:
@@ -144,7 +161,6 @@ class OpenCodeServerRunner:
             prompt_payload["model"] = parsed_model
 
         try:
-            # We call /session/{session_id}/prompt which returns when generation completes
             timeout_config = httpx.Timeout(
                 connect=ttft_timeout_s,
                 read=deadline_timeout_s,
@@ -157,7 +173,6 @@ class OpenCodeServerRunner:
                     client.post(f"{self.base_url}/session/{session_id}/message", json=prompt_payload)
                 )
 
-                # Wait for completion while checking deadline
                 now = time.perf_counter()
                 while not post_task.done():
                     await asyncio.sleep(0.05)
@@ -171,7 +186,6 @@ class OpenCodeServerRunner:
 
                 if not timed_out:
                     resp = await post_task
-                    t_end = time.perf_counter()
 
                     if resp.status_code == 429:
                         status = BenchmarkStatus.RATE_LIMITED
@@ -188,8 +202,7 @@ class OpenCodeServerRunner:
                     else:
                         resp_data = resp.json()
                         info = resp_data.get("info", {})
-                        
-                        # Detect OpenCode provider errors embedded in HTTP 200 responses
+
                         opencode_err = info.get("error")
                         if opencode_err:
                             err_data = opencode_err.get("data", {}) if isinstance(opencode_err, dict) else {}
@@ -199,104 +212,74 @@ class OpenCodeServerRunner:
                             if status_code == 429:
                                 status = BenchmarkStatus.RATE_LIMITED
                                 timeout_reason = TimeoutType.RATE_LIMIT_429
-                            elif status_code >= 500:
-                                timeout_reason = TimeoutType.SERVER_ERROR_5XX
                             else:
                                 timeout_reason = TimeoutType.CLIENT_ERROR_4XX
-                            error_message = f"Provider Error ({status_code}): {err_msg}"
+                            error_message = f"Provider Error: {err_msg}"
 
-                        tok_info = info.get("tokens", {})
-                        cache_info = tok_info.get("cache", {})
+                        toks = info.get("tokens", {})
+                        if toks:
+                            tokens_captured.input_tokens = toks.get("input", 0)
+                            tokens_captured.output_tokens = toks.get("output", 0)
+                            tokens_captured.reasoning_tokens = toks.get("reasoning", 0)
+                            cache_t = toks.get("cache", {})
+                            tokens_captured.cached_read_tokens = cache_t.get("read", 0)
+                            tokens_captured.cached_write_tokens = cache_t.get("write", 0)
 
-                        tokens_captured = TokenMetrics(
-                            input_tokens=tok_info.get("input", 0),
-                            output_tokens=tok_info.get("output", 0),
-                            reasoning_tokens=tok_info.get("reasoning", 0),
-                            cached_read_tokens=cache_info.get("read", 0),
-                            cached_write_tokens=cache_info.get("write", 0),
-                        )
-
-                        # Check exact parts and timing from OpenCode response
                         parts = resp_data.get("parts", [])
-                        part_dur_accum_ms = 0.0
-                        first_part_start_ms: float | None = None
-                        last_part_end_ms: float | None = None
+                        for part in parts:
+                            p_text = part.get("text", "")
+                            if on_chunk and p_text:
+                                on_chunk(p_text)
 
-                        for p in parts:
-                            p_type = p.get("type")
-                            if p_type in ("text", "reasoning"):
-                                p_text = p.get("text", "")
-                                if p_text:
-                                    text_preview_parts.append(p_text)
-                                    if on_chunk:
-                                        on_chunk(p_text)
-                                p_time = p.get("time") or {}
-                                p_start = p_time.get("start")
-                                p_end = p_time.get("end")
-                                if p_start and p_end:
-                                    if first_part_start_ms is None or p_start < first_part_start_ms:
-                                        first_part_start_ms = float(p_start)
-                                    if last_part_end_ms is None or p_end > last_part_end_ms:
-                                        last_part_end_ms = float(p_end)
-                                    part_dur_accum_ms += max(0.0, float(p_end - p_start))
+                            p_time = part.get("time", {})
+                            p_start = p_time.get("start")
+                            p_end = p_time.get("end")
+                            if p_start and t_first_token is None:
+                                t_first_token = float(p_start)
+                            if p_start and p_end:
+                                dur = float(p_end) - float(p_start)
+                                if dur > 0:
+                                    inter_token_latencies.append(dur)
 
-                        resp_time = info.get("time", {})
-                        p_created = resp_time.get("created")
-                        p_completed = resp_time.get("completed")
-
-                        if first_part_start_ms and p_created:
-                            ttft_sec = max(0.001, (first_part_start_ms - p_created) / 1000.0)
-                            t_first_token = t0 + ttft_sec
-                        elif p_created and p_completed:
-                            t_gen_s = (p_completed - p_created) / 1000.0
-                            t_first_token = t0 + max(0.001, ((t_end - t0) - t_gen_s))
-                        else:
-                            t_first_token = t0 + ((t_end - t0) * 0.7)
-
-                        t_last_token = t_end
+                        if t_first_token is None:
+                            t_first_token = request_start_ms + (
+                                (t_connected - t0) * 1000.0 if t_connected else 50.0
+                            )
 
         except httpx.ConnectTimeout:
             timed_out = True
-            timeout_reason = TimeoutType.CONNECT_TIMEOUT
-            error_message = f"Connect timeout exceeded ({ttft_timeout_s}s)"
-        except Exception as e:
-            if not timed_out:
-                status = BenchmarkStatus.ERROR
-                timeout_reason = TimeoutType.UNKNOWN_ERROR
-                error_message = str(e)
-
-        t_end = time.perf_counter()
-        if timed_out:
             status = BenchmarkStatus.TIMEOUT
+            timeout_reason = TimeoutType.CONNECT_TIMEOUT
+            error_message = "Connection timed out connecting to OpenCode server"
+        except httpx.ReadTimeout:
+            timed_out = True
+            status = BenchmarkStatus.TIMEOUT
+            timeout_reason = (
+                TimeoutType.TTFT_TIMEOUT if t_first_token is None else TimeoutType.DEADLINE_TIMEOUT
+            )
+            error_message = "Read timed out waiting for OpenCode response"
+        except Exception as exc:
+            status = BenchmarkStatus.ERROR
+            timeout_reason = TimeoutType.UNKNOWN_ERROR
+            error_message = str(exc)
 
-        first_token_ms = (
-            request_start_ms + ((t_first_token - t0) * 1000.0)
-            if t_first_token is not None
-            else None
-        )
-        completed_ms = request_start_ms + ((t_end - t0) * 1000.0)
-        connection_ms = (
-            request_start_ms + ((t_connected - t0) * 1000.0)
-            if t_connected is not None
-            else None
-        )
-
+        completed_ms = time.time() * 1000.0
         timings = compute_timing_metrics(
             request_start_ms=request_start_ms,
-            first_token_ms=first_token_ms,
+            connection_ms=(t_connected - t0) * 1000.0 if t_connected else None,
+            first_token_ms=t_first_token,
             completed_ms=completed_ms,
             inter_token_latencies_ms=inter_token_latencies,
-            connection_ms=connection_ms,
         )
-
-        # Fallback estimation if zero tokens reported
-        if tokens_captured.output_tokens == 0 and text_preview_parts:
-            tokens_captured.output_tokens = max(1, len("".join(text_preview_parts)) // 4)
 
         tps = compute_tps_metrics(tokens_captured, timings)
 
+        # Privacy cleanup: Delete session
+        if self.auto_cleanup and session_id:
+            await self.cleanup_session(session_id)
+
         return BenchmarkResult(
-            id=session_id or req_id,
+            id=req_id,
             provider="opencode-server",
             model=model or "default",
             status=status,
@@ -305,6 +288,4 @@ class OpenCodeServerRunner:
             timings=timings,
             tps=tps,
             error_message=error_message,
-            raw_response_preview="".join(text_preview_parts)[:200],
-            metadata={"session_id": session_id, "mode": "http-server"},
         )

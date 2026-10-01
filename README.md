@@ -1,149 +1,185 @@
-# agent-tps-bench
+<div align="center">
 
-> High-precision benchmark suite for Agent and LLM **Tokens Per Second (TPS)**, **Time to First Token (TTFT)**, **Timeout Classification**, **Concurrency Degradation**, and **Rate Limits**.
+# ⚡ TokPulse
 
-Inspired by agent harness architectures like [T3 Code](https://github.com/pingdotgg/t3code), this tool bridges the gap between **raw LLM streaming inference** and **multi-turn subagent execution**.
+**High-Velocity Benchmark & Concurrency Profiler for AI Coding Agents**
 
----
+[![CI](https://github.com/salasebas/tokpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/salasebas/tokpulse/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.13-blue.svg)](https://www.python.org/)
+[![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Key Features
-
-1. **Dual-Tier Benchmarking**:
-   - **Agent Harness Tier (OpenCode)**: Executes real subagents via OpenCode CLI or connects to `opencode serve`. Automatically extracts SQLite session records from `~/.local/share/opencode/opencode.db` to cross-verify ground-truth token accounting (input, output, reasoning, cache read/write).
-   - **Direct Provider Tier (LLM Streaming SSE)**: Probes OpenAI, OpenRouter, Groq, Cerebras, DeepSeek, and local Ollama endpoints with sub-millisecond precision.
-
-2. **Mathematical Precision**:
-   - **Decode TPS**: $\frac{\text{output\_tokens} + \text{reasoning\_tokens}}{\text{generation\_duration}}$ (true GPU inference speed).
-   - **End-to-End TPS**: $\frac{\text{output\_tokens} + \text{reasoning\_tokens}}{\text{total\_wall\_clock\_duration}}$ (user-perceived speed).
-   - **Total Throughput**: $\frac{\text{total\_tokens}}{\text{total\_duration}}$ (eval + generation throughput).
-   - **Inter-Token Latency (ITL)**: Median (p50), tail (p90, p95, p99), Max stall, and RFC 3550 Jitter.
-   - **Cache Efficiency**: Cache hit rate percentage and cached tokens read/written.
-
-3. **Fine-Grained Timeout & Error Classification**:
-   - `CONNECT_TIMEOUT`: Server connection could not be established.
-   - `TTFT_TIMEOUT`: Model prefill/queue exceeded the initial token threshold.
-   - `STALL_TIMEOUT`: Mid-stream heartbeat watchdog triggered when tokens paused.
-   - `DEADLINE_TIMEOUT`: Total execution exceeded maximum deadline.
-   - `RATE_LIMIT_429`: HTTP 429 Too Many Requests detected, parsing `Retry-After` backoff.
-   - `SERVER_ERROR_5XX` & `CLIENT_ERROR_4XX`: Protocol-level failures.
-   - `PROCESS_CRASH`: Subagent process terminated with non-zero exit code (e.g. SQLite locking).
-
-4. **Subagent Concurrency & Stress Testing**:
-   - Simulate $N$ concurrent workers.
-   - Trace throughput saturation, concurrency degradation curves, and rate limit thresholds.
-   - Export reports to JSON or Markdown.
+*Measure real-world Decode TPS, Time-to-First-Token (TTFT), Subagent Concurrency Scaling, and Failure Classifications across OpenCode, Cursor, Grok, Antigravity, Codex, and Claude Code.*
 
 ---
 
-## Architecture
+</div>
 
+## 💡 Why TokPulse?
+
+Standard LLM benchmark tools measure simple HTTP API completions. But modern developers work with **autonomous coding agents** that run in background terminal processes, execute multi-turn loops, inspect repository workspaces, and query local SQLite caches.
+
+When evaluating coding agents, you need answers to critical questions:
+- **What is the true generation velocity (Decode TPS)?** (Excluding initial prompt overhead & context serialization).
+- **What is the real perceived latency (TTFT & E2E TPS)?**
+- **How well does prompt caching perform?** (Prompt cache read vs write accounting).
+- **Does throughput collapse under multi-agent concurrency?** (Subagents competing for local processes, locks, or hitting HTTP 429 rate limits).
+
+**TokPulse** provides a unified speedometer, interactive terminal explorer, and multi-agent load tester designed specifically for developer coding agents.
+
+---
+
+## 🚀 Quickstart
+
+Run TokPulse directly using [`uv`](https://github.com/astral-sh/uv):
+
+```bash
+# Launch the sleek interactive TUI
+uvx tokpulse
+
+# Or run with the short alias
+uvx tp
 ```
-                    ┌───────────────────────────────────┐
-                    │            CLI & Runner           │
-                    │  (tps-bench / Typer / Rich UI)    │
-                    └─────────────────┬─────────────────┘
-                                      │
-              ┌───────────────────────┴───────────────────────┐
-              ▼                                               ▼
-┌───────────────────────────────┐               ┌───────────────────────────────┐
-│       Agent Tier              │               │       Provider Tier           │
-│   (OpenCode CLI / Server)     │               │   (OpenAI / Groq / Ollama)    │
-└──────────────┬────────────────┘               └──────────────┬────────────────┘
-               │                                               │
-     ┌─────────┴─────────┐                                     │
-     ▼                   ▼                                     ▼
-┌──────────────┐  ┌─────────────┐                      ┌───────────────┐
-│ opencode.db  │  │ opencode run│                      │  SSE Stream   │
-│ SQLite Read  │  │ JSON Events │                      │  Watchdogs    │
-└──────────────┘  └─────────────┘                      └───────────────┘
+
+Alternatively, clone the repository for local development:
+
+```bash
+git clone https://github.com/salasebas/tokpulse.git
+cd tokpulse
+uv sync --extra dev
+uv run tokpulse
 ```
 
 ---
 
-## Installation & Requirements
+## 🕹️ Interactive Terminal Interface (TUI)
 
-* macOS / Linux
-* Python $\ge 3.13$
-* [uv](https://github.com/astral-sh/uv) (recommended) or standard `pip`
+Simply type `tokpulse` (or `tp`) with no arguments to open the clean interactive menu:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  ⚡ TokPulse v0.2.0                                             │
+│  Coding Agent Velocity & Concurrency Profiler                  │
+│  Engines: OpenCode · Cursor · Grok · Antigravity · Codex · Claude │
+└────────────────────────────────────────────────────────────────┘
+
+? What would you like to do?
+ ❯ ⚡ Run Benchmark (Prompt, Model Fuzzy Finder, Live Speedometer)
+   🔥 Subagent Stress Test (Concurrency & Rate Limits)
+   📜 Saved Reports (Dynamic Standalone Inspector)
+   🗑️ Clear / Delete Reports
+   📂 OpenCode Local History (SQLite Telemetry)
+   🚪 Exit
+```
+
+### Key Interactive Features:
+1. **Global Fuzzy Model Finder**: Search across all 30+ agent models instantly (e.g. type `fable`, `gpt-6`, `gemini-2.5`, `longcat`, `composer`) without having to pick a provider first.
+2. **Live Token Speedometer**: Live streaming token preview with real-time token counter.
+3. **Dynamic Standalone Report Inspector**: Browse your saved benchmark runs and view full standalone performance telemetry cards on screen.
+4. **Subagents Concurrency Tester**: Spin up parallel worker pools to test degradation under load and detect rate limits (HTTP 429).
+
+---
+
+## 🛡️ Supported Agent Engines
+
+TokPulse natively integrates with the core agent CLI drivers:
+
+| Agent Engine | Driver Binary | Default Model | Typical Execution Profile |
+| :--- | :--- | :--- | :--- |
+| **OpenCode** | `opencode` | `opencode/longcat-2.5-preview-free` | Local CLI JSON streaming, server mode (`opencode serve`), SQLite session tracking |
+| **Cursor Agent** | `cursor-agent` / `cursor` | `auto` / `composer-2` | Specialized agentic composer with multi-file diff awareness |
+| **Grok Agent** | `grok-build` / `grok` | `grok-build` | Terminal coding agent powered by xAI Grok 3 reasoning |
+| **Antigravity** | `agy` / `antigravity` | `antigravity-default` | Deep multi-step reasoning agent with Gemini 2.5 Pro / Flash |
+| **Codex** | `codex` | `gpt-6-astra` | OpenAI Codex CLI execution engine (`codex exec`) |
+| **Claude Code** | `claude` | `claude-fable-5-1` | Anthropic's developer-focused CLI agent with structured JSON outputs |
+
+---
+
+## 🔒 Privacy Guarantee: Zero Chat Logging
+
+TokPulse is built strictly for **performance benchmarking**, not surveillance:
+- **No Chat History Stored**: Prompts and generated text are never written to disk in persistent benchmark reports.
+- **Pure Numerical Telemetry**: Only performance metrics (tokens, TTFT, TPS, latencies, error types, timestamps) are saved.
+- **Automatic Session Purge**: After every benchmark execution, temporary sessions and state files are immediately wiped from the agent host (including OpenCode SQLite and temporary scratch workspaces).
+
+Metrics are stored locally on your machine in standard OS data paths:
+- **macOS**: `~/Library/Application Support/tokpulse/runs/`
+- **Linux**: `~/.local/share/tokpulse/runs/` (or `$XDG_DATA_HOME/tokpulse/runs/`)
+- **Windows**: `%APPDATA%/tokpulse/runs/`
+
+---
+
+## 💻 CLI Usage & Commands
+
+You can also use TokPulse headlessly or integrate it into CI pipelines:
 
 ```bash
-cd ~/projects/agent-tps-bench
-uv sync
+# Benchmark an agent with custom prompt
+uv run tokpulse bench --provider opencode --prompt "Write a Python binary search"
+
+# Benchmark with strict timeout guards
+uv run tokpulse bench --provider claude --ttft-timeout 5.0 --stall-timeout 3.0
+
+# Concurrency stress test: 4 parallel workers, 8 total requests
+uv run tokpulse stress --target opencode --concurrency 4 --total 8
+
+# Progressive scalability sweep (1, 2, 4, 8 workers)
+uv run tokpulse stress --target codex --sweep --total 16
+
+# View all saved runs in a summary table
+uv run tokpulse runs
+
+# Inspect a single report standalone on screen
+uv run tokpulse view <RUN_ID>
+
+# Delete a single report or clear all reports
+uv run tokpulse delete <RUN_ID>
+uv run tokpulse clear --yes
+
+# Inspect past sessions from your local OpenCode SQLite database
+uv run tokpulse opencode-history --limit 10
 ```
 
 ---
 
-## CLI Usage
+## 📐 Mathematical Methodology
 
-### 1. Active OpenCode Benchmark
-Launch a prompt through OpenCode and measure real-time streaming TPS, TTFT, and timeout classification:
+TokPulse computes high-resolution metrics following standardized profiling equations:
 
-```bash
-uv run tps-bench opencode-bench --prompt "Explica que es un puntero en C en 2 lineas"
-```
+$$\text{Decode TPS} = \frac{N_{\text{output}} + N_{\text{reasoning}}}{T_{\text{completed}} - T_{\text{first\_token}}} \times 1000$$
 
-Configurable timeouts:
-```bash
-uv run tps-bench opencode-bench \
-  -p "Calcula la serie de fibonacci" \
-  --ttft-timeout 10.0 \
-  --stall-timeout 4.0 \
-  --deadline-timeout 30.0 \
-  -o report.json
-```
+$$\text{End-to-End TPS} = \frac{N_{\text{output}} + N_{\text{reasoning}}}{T_{\text{completed}} - T_{\text{request\_start}}} \times 1000$$
 
-### 2. Historical OpenCode Session Telemetry
-Inspect previously executed OpenCode sessions directly from the local database:
+$$\text{Cache Hit Rate} = \frac{N_{\text{cache\_read}}}{N_{\text{input}} + N_{\text{cache\_read}}}$$
 
-```bash
-# View recent 10 sessions with calculated TPS and token breakdown
-uv run tps-bench opencode-history --limit 10
+$$\text{Throughput Degradation} = \max\left(0, \frac{\text{TPS}_{\text{baseline}} - \text{TPS}_{\text{concurrent}}}{\text{TPS}_{\text{baseline}}}\right) \times 100\%$$
 
-# Inspect a specific session in detail
-uv run tps-bench opencode-history --session ses_f0b6344d9ffeJ6cXqo46m5Goq0
-```
+Inter-arrival token jitter is calculated per **RFC 3550**:
 
-### 3. Direct LLM Provider Streaming Benchmark
-Test any OpenAI-compatible streaming API (Groq, OpenRouter, Cerebras, OpenAI, Ollama):
-
-```bash
-# Benchmark Groq
-uv run tps-bench stream-bench \
-  --provider groq \
-  --model llama-3.3-70b-versatile \
-  --api-key "$GROQ_API_KEY" \
-  --prompt "Cuenta una historia corta de 3 parrafos"
-
-# Benchmark local Ollama
-uv run tps-bench stream-bench \
-  --base-url "http://localhost:11434/v1" \
-  --model "qwen2.5-coder:7b" \
-  --prompt "Write a binary search function in Rust"
-```
-
-### 4. Subagent Concurrency & Stress Testing
-Run parallel subagents and analyze concurrency degradation and rate limits:
-
-```bash
-# Run 4 concurrent subagents executing 8 total requests
-uv run tps-bench stress --target opencode --concurrency 4 --total 8
-
-# Concurrency sweep (1, 2, 4, 8 workers) to chart degradation curve
-uv run tps-bench stress --target opencode --sweep --total 4 -o sweep.json
-```
+$$J = \frac{1}{M-1} \sum_{i=1}^{M-1} |D(i) - D(i-1)|$$
 
 ---
 
-## Running the Test Suite
+## 🛠️ Development & Quality Controls
+
+TokPulse enforces strict code quality and formatting powered by **Ruff** (the blazingly fast modern linter/formatter) and **Lefthook**:
 
 ```bash
+# Run test suite
 uv run pytest -v
+
+# Run linter checks
+uv run ruff check .
+
+# Format code
+uv run ruff format .
+
+# Run pre-commit hooks manually
+lefthook run pre-commit
 ```
 
-All 16 unit and integration tests cover:
-- Metric and percentile calculations (ITL, Jitter, Decode TPS, E2E TPS).
-- OpenCode SQLite session reader and ground-truth validation.
-- Mock OpenCode streaming event parser (`step_start`, `text`, `reasoning`, `step_finish`).
-- Watchdog timeouts (`TTFT_TIMEOUT`, `STALL_TIMEOUT`, `DEADLINE_TIMEOUT`).
-- HTTP 429 rate limit detection and backoff extraction.
-- Concurrency orchestrator and degradation tracking.
+---
+
+## 📄 License
+
+MIT © [Sebastian Sala](https://github.com/salasebas)

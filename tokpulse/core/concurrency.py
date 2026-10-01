@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import time
-from typing import Any, Callable
+from typing import Any
 
-from agent_tps_bench.calculator import aggregate_concurrency_results
-from agent_tps_bench.models import BenchmarkResult, ConcurrencyReport
-from agent_tps_bench.llm_stream_runner import LLMStreamRunner
-from agent_tps_bench.opencode_runner import OpenCodeRunner
+from tokpulse.core.calculator import aggregate_concurrency_results
+from tokpulse.core.models import BenchmarkResult, ConcurrencyReport
 
 
 class ConcurrencyRunner:
     """Orchestrates concurrent subagents or stream workers to measure throughput scaling, degradation, and rate limits."""
 
-    def __init__(
-        self,
-        runner: OpenCodeRunner | LLMStreamRunner,
-    ):
+    def __init__(self, runner: Any):
         self.runner = runner
 
     async def run_batch(
@@ -33,7 +29,6 @@ class ConcurrencyRunner:
         semaphore = asyncio.Semaphore(concurrency)
         prompts = [prompt] * total_requests if isinstance(prompt, str) else prompt
         if len(prompts) < total_requests:
-            # Repeat prompts to match total_requests
             prompts = (prompts * ((total_requests // len(prompts)) + 1))[:total_requests]
 
         completed_count = 0
@@ -57,9 +52,10 @@ class ConcurrencyRunner:
                             **runner_kwargs,
                         )
                 except Exception as exc:
-                    from agent_tps_bench.models import BenchmarkStatus, TimeoutType, TimingMetrics
+                    from tokpulse.core.models import BenchmarkStatus, TimeoutType, TimingMetrics
+
                     res = BenchmarkResult(
-                        id=f"err_{idx}_{int(time.time()*1000)}",
+                        id=f"err_{idx}_{int(time.time() * 1000)}",
                         provider="error",
                         model=model or "unknown",
                         status=BenchmarkStatus.ERROR,
@@ -86,7 +82,7 @@ class ConcurrencyRunner:
             concurrency_level=concurrency,
             results=results,
             wall_clock_duration_s=wall_clock,
-            baseline_single_worker_tps=baseline_single_worker_tps,
+            baseline_decode_tps=baseline_single_worker_tps,
         )
 
     async def run_sweep(

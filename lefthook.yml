@@ -1,0 +1,17 @@
+# Lefthook configuration for TokPulse (fast Git hooks)
+# Runs Ruff (linter/formatter) and Pytest on pre-commit
+
+pre-commit:
+  parallel: false
+  commands:
+    ruff-lint:
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+    pytest:
+      tags: testing
+      run: uv run pytest -q
